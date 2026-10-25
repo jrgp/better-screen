@@ -267,6 +267,8 @@ func (c *client) input(data []byte) (bool, error) {
 				plain = append(plain, 1)
 			case 'c':
 				op = "new"
+			case 'k':
+				op = "kill"
 			case 'n', 14:
 				op = "next"
 			case 'p', 16:
@@ -413,7 +415,7 @@ func (c *client) draw() error {
 				lines = append(lines, fmt.Sprintf("%s%d  %s%s", prefix, w.Number, cleanText(w.Title), current))
 			}
 		} else {
-			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/p  next/previous", "0-9  select window   \"  window list", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "a  literal Ctrl-A    ?  help"}
+			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/p  next/previous", "0-9  select window   \"  window list", "k  kill current window", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "a  literal Ctrl-A    ?  help"}
 		}
 		// Scroll menus within the available rows, keeping the selection visible.
 		start := max(0, c.choice-max(0, c.rows-4))

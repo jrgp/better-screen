@@ -41,6 +41,7 @@ dynamically linked; this is not a fully static libc binary.
 ./bs -ls               # list sessions, windows and attached-client counts
 ./bs -r work           # reattach a detached session
 ./bs -x work           # attach without disconnecting other clients
+./bs -x                # attach when exactly one session exists
 ./bs -d -r work        # detach existing clients, then reattach
 ./bs -v                # version
 ```
@@ -49,7 +50,8 @@ Exact names take precedence; otherwise an unambiguous name prefix is accepted.
 Session names use 1-64 ASCII letters, digits, dots, hyphens or underscores.
 Shells use `$SHELL` (otherwise `/bin/sh`), start in HOME, and receive
 `TERM=xterm-256color`, `COLORTERM=truecolor` and `BS_SESSION`.
-Exiting the last window ends its session.
+When a window's shell or its exec-replacement exits, the window is removed.
+Closing the last window ends its session and disconnects its clients.
 
 ## Keys
 
@@ -58,6 +60,7 @@ Press **Ctrl-A**, release it, then:
 | Key | Action |
 |---|---|
 | `c` | Create a window |
+| `k` | Kill the current window and its jobs |
 | `n`, `p` | Next, previous window |
 | `0`-`9` | Select a numbered window |
 | `"` | Interactive window list |

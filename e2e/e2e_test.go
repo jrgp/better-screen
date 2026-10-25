@@ -30,7 +30,7 @@ type harness struct {
 	stopped   bool
 }
 
-func newHarness(t *testing.T, bin string) *harness {
+func newHarness(t *testing.T, bin string, shell ...string) *harness {
 	t.Helper()
 	// Keep Unix socket paths below the macOS 104-byte limit.
 	home, err := os.MkdirTemp("", "bs-e2e-")
@@ -38,6 +38,9 @@ func newHarness(t *testing.T, bin string) *harness {
 	h := &harness{t: t, bin: bin, home: home}
 	h.daemon = exec.Command(bin, "__daemon")
 	h.daemon.Env = h.env()
+	if len(shell) > 0 {
+		h.daemon.Env = append(h.daemon.Env, "SHELL="+shell[0])
+	}
 	h.daemon.Stderr = &h.log
 	require.NoError(t, h.daemon.Start())
 	t.Cleanup(func() {
@@ -410,4 +413,5 @@ func TestE2E(t *testing.T) {
 	})
 	runRobustness(t, bin)
 	runStartup(t, bin)
+	runWindowLifecycle(t, bin)
 }

@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -42,10 +44,27 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	name := flags.String("S", "", "create a named session")
 	reattach := flags.String("r", "", "reattach to a session")
-	multi := flags.String("x", "", "attach without disconnecting other clients")
+	multi := flags.String("x", "", "attach without disconnecting other clients (name optional for a sole session)")
 	detach := flags.Bool("d", false, "detach existing clients (with -r)")
 	list := flags.Bool("ls", false, "list sessions")
 	version := flags.Bool("v", false, "print version")
+	// flag has no optional string arguments; spell an omitted name as -x=.
+	args = slices.Clone(args)
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			break
+		}
+		switch args[i] {
+		case "-S", "--S", "-r", "--r":
+			i++
+		case "-x", "--x":
+			if i+1 == len(args) || strings.HasPrefix(args[i+1], "-") {
+				args[i] += "="
+			} else {
+				i++
+			}
+		}
+	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -59,14 +78,20 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 		fmt.Fprintf(out, "bs %s\n", Version)
 		return nil
 	}
+	multiRequested := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "x" {
+			multiRequested = true
+		}
+	})
 	selected := 0
-	for _, active := range []bool{*name != "", *reattach != "", *multi != "", *list} {
+	for _, active := range []bool{*name != "", *reattach != "", multiRequested, *list} {
 		if active {
 			selected++
 		}
 	}
 	if selected > 1 || (*detach && *reattach == "") {
-		return fmt.Errorf("use bs [-S name | -ls | -r name | -x name | -d -r name]")
+		return fmt.Errorf("use bs [-S name | -ls | -r name | -x [name] | -d -r name]")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -110,7 +135,7 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 	if *reattach != "" {
 		r.Op, r.Name = "attach", *reattach
 	}
-	if *multi != "" {
+	if multiRequested {
 		r.Op, r.Name, r.Multi = "attach", *multi, true
 	}
 	return attach(conn, in, out, r)

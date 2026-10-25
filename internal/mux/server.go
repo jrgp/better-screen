@@ -450,6 +450,8 @@ func (s *Server) handle(p *peer, r request) {
 				return
 			}
 			s.resetViews(session)
+		case "kill":
+			s.windowEvent(event{window: w, exited: true})
 		case "next", "prev", "select":
 			switch r.Op {
 			case "next":
