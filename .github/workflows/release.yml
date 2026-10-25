@@ -3,17 +3,23 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v* tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
   CGO_ENABLED: '1'
-  RELEASE_VERSION: ${{ github.ref_name }}
+  RELEASE_VERSION: ${{ inputs.tag || github.ref_name }}
   # Keep test socket paths below macOS's Unix socket path limit.
   TMPDIR: /tmp
 
@@ -39,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: refs/tags/${{ env.RELEASE_VERSION }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -61,7 +67,11 @@ jobs:
           infocmp xterm-256color >/dev/null
       - name: Build the tagged commit
         run: |
-          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          [[ "$RELEASE_VERSION" == v* ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_VERSION^{commit}")"
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          fi
           test "$(go env GOOS)-$(go env GOARCH)" = "$PLATFORM"
           make build VERSION="$RELEASE_VERSION"
           mkdir -p dist
@@ -142,11 +152,11 @@ jobs:
         id: release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          target_commitish: ${{ github.sha }}
+          tag_name: ${{ env.RELEASE_VERSION }}
+          name: ${{ env.RELEASE_VERSION }}
+          target_commitish: ${{ env.RELEASE_VERSION }}
           draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           fail_on_unmatched_files: true
           files: |
             dist/bs-linux-amd64

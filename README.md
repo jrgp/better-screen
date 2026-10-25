@@ -306,12 +306,21 @@ GitHub's automatically provided source-code archive links are not binary assets.
 Commit the workflow and desired code, then choose an unused version:
 
 ```sh
+git push origin HEAD
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
 The published release is named `v0.2.0`, and both executables report that version.
 Do not move an existing release tag; use a new version for fixes.
+Push the workflow to the default branch before the first tag so GitHub registers
+it. Tag pushes that happened before registration are not replayed.
+
+To retry an existing tag without deleting or moving it:
+
+```sh
+gh workflow run release.yml --ref master -f tag=v0.2.0
+```
 
 Local verification covers Linux builds, linking, version injection and E2E
 tests, plus workflow syntax with actionlint. Hosted Actions execution, macOS
