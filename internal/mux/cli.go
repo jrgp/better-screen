@@ -31,6 +31,10 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		config, err := loadConfig(home)
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 		signal.Ignore(syscall.SIGHUP)
@@ -38,7 +42,7 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 		if shell == "" {
 			shell = "/bin/sh"
 		}
-		return NewServer(home, shell, log.New(stderr, "bs daemon: ", log.LstdFlags)).Run(ctx)
+		return NewServer(home, shell, log.New(stderr, "bs daemon: ", log.LstdFlags), config).Run(ctx)
 	}
 	flags := flag.NewFlagSet("bs", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -95,6 +99,9 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
+		return err
+	}
+	if _, err := loadConfig(home); err != nil {
 		return err
 	}
 	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach}

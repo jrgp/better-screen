@@ -223,6 +223,7 @@ func TestE2E(t *testing.T) {
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, string(out))
 
+	runConfiguration(t, bin)
 	t.Run("commands-restoration-windows", func(t *testing.T) {
 		h := newHarness(t, bin)
 		c := h.client(80, 24, "-S", "work")

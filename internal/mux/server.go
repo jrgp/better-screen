@@ -69,14 +69,15 @@ type event struct {
 type Server struct {
 	home, shell string
 	log         *log.Logger
+	config      Config
 	events      chan event
 	done        chan struct{}
 	sessions    []*session
 	peers       map[*peer]bool
 }
 
-func NewServer(home, shell string, logger *log.Logger) *Server {
-	return &Server{home: home, shell: shell, log: logger, events: make(chan event, 256), done: make(chan struct{}), peers: make(map[*peer]bool)}
+func NewServer(home, shell string, logger *log.Logger, config Config) *Server {
+	return &Server{home: home, shell: shell, log: logger, config: config, events: make(chan event, 256), done: make(chan struct{}), peers: make(map[*peer]bool)}
 }
 
 func (s *Server) publish(e event) bool {
