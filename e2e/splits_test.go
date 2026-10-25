@@ -57,6 +57,13 @@ func runSplits(t *testing.T, bin string) {
 		b.command("printf 'shared-%s\\n' \"$TOKEN\"", "shared-right")
 		a.await("shared-right")
 		a.write("\x01\t")
+		require.Eventually(t, func() bool {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			x, err := b.screen.CursorX()
+			require.NoError(t, err)
+			return x < 39
+		}, 5*time.Second, 15*time.Millisecond, "second client must observe shared focus before sending input")
 		b.command("printf 'next-%s\\n' \"$TOKEN\"", "next-left")
 		a.await("next-left")
 		a.write("\x01\t")

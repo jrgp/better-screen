@@ -48,7 +48,7 @@ func runStartup(t *testing.T, bin string) {
 		if raceEnabled {
 			args = append(args, "-race")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 		build := exec.CommandContext(ctx, "go", append(args, "./cmd/bs")...)
 		build.Dir = ".."
