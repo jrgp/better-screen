@@ -17,6 +17,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/jrgp/bs/internal/vt"
+	"github.com/shirou/gopsutil/v4/process"
 	ghostty "go.mitchellh.com/libghostty"
 	"golang.org/x/sys/unix"
 )
@@ -640,14 +641,44 @@ func (s *Server) queueInput(w *window, data []byte) bool {
 
 func (s *Server) stopWindow(w *window) {
 	close(w.done)
-	// Job-control shells put foreground applications in a separate process
-	// group. Signal both before closing the controlling PTY.
-	if group, err := unix.IoctlGetInt(int(w.pty.Fd()), unix.TIOCGPGRP); err == nil && group > 0 {
+	// A PTY's jobs share its Unix session, not necessarily its process group.
+	// Enumerate through gopsutil instead of maintaining a platform-specific
+	// process-table parser. Kill jobs before the shell so it can reap them.
+	pids, err := process.Pids()
+	if err != nil {
+		s.log.Printf("enumerating window jobs: %v", err)
+	}
+	jobs := make([]int, 0)
+	groups := make(map[int]bool)
+	for _, pid := range pids {
+		sid, err := unix.Getsid(int(pid))
+		if err != nil || sid != w.cmd.Process.Pid || int(pid) == w.cmd.Process.Pid {
+			continue
+		}
+		jobs = append(jobs, int(pid))
+		group, err := unix.Getpgid(int(pid))
+		if err == nil && group != w.cmd.Process.Pid {
+			groups[group] = true
+		}
+	}
+	for group := range groups {
 		unix.Kill(-group, unix.SIGKILL)
 	}
-	unix.Kill(-w.cmd.Process.Pid, unix.SIGKILL)
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for len(jobs) > 0 && time.Now().Before(deadline) {
+		jobs = slices.DeleteFunc(jobs, func(pid int) bool { return unix.Kill(pid, 0) == unix.ESRCH })
+		if len(jobs) > 0 {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	unix.Kill(-w.cmd.Process.Pid, unix.SIGHUP)
 	w.pty.Close()
-	<-w.wait
+	select {
+	case <-w.wait:
+	case <-time.After(500 * time.Millisecond):
+		unix.Kill(-w.cmd.Process.Pid, unix.SIGKILL)
+		<-w.wait
+	}
 	w.term.Close()
 }
 

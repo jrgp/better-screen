@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -26,6 +27,7 @@ type harness struct {
 	bin, home string
 	daemon    *exec.Cmd
 	log       bytes.Buffer
+	stopped   bool
 }
 
 func newHarness(t *testing.T, bin string) *harness {
@@ -39,17 +41,7 @@ func newHarness(t *testing.T, bin string) *harness {
 	h.daemon.Stderr = &h.log
 	require.NoError(t, h.daemon.Start())
 	t.Cleanup(func() {
-		require.NoError(t, h.daemon.Process.Signal(syscall.SIGTERM))
-		done := make(chan error, 1)
-		go func() { done <- h.daemon.Wait() }()
-		select {
-		case err := <-done:
-			assert.NoError(t, err, h.log.String())
-		case <-time.After(8 * time.Second):
-			h.daemon.Process.Kill()
-			<-done
-			t.Error("daemon cleanup timed out")
-		}
+		h.stopDaemon()
 		assert.NoFileExists(t, filepath.Join(home, ".bs", "bs.sock"))
 		require.NoError(t, os.RemoveAll(home))
 	})
@@ -70,11 +62,32 @@ func (h *harness) env() []string {
 
 func (h *harness) cli(args ...string) string {
 	h.t.Helper()
-	cmd := exec.Command(h.bin, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, h.bin, args...)
 	cmd.Env = h.env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(h.t, err, string(out))
 	return string(out)
+}
+
+func (h *harness) stopDaemon() {
+	h.t.Helper()
+	if h.stopped {
+		return
+	}
+	h.stopped = true
+	require.NoError(h.t, h.daemon.Process.Signal(syscall.SIGTERM))
+	done := make(chan error, 1)
+	go func() { done <- h.daemon.Wait() }()
+	select {
+	case err := <-done:
+		assert.NoError(h.t, err, h.log.String())
+	case <-time.After(8 * time.Second):
+		h.daemon.Process.Kill()
+		<-done
+		h.t.Error("daemon cleanup timed out")
+	}
 }
 
 type terminalClient struct {
@@ -271,6 +284,10 @@ func TestE2E(t *testing.T) {
 		a.command("printf 'work-%s\\n' token", "work-token")
 		b := h.client(90, 24, "-x", "work")
 		b.await("work-token")
+		a.write("\x01c")
+		a.command("printf 'extra-%s\\n' window", "extra-window")
+		a.write("\x010")
+		a.await("work-token")
 		other := h.client(90, 24, "-S", "personal")
 		other.await("bs$ ")
 		other.command("printf 'personal-%s\\n' token", "personal-token")
@@ -279,6 +296,7 @@ func TestE2E(t *testing.T) {
 		a.write("\x01s")
 		a.await("bs - Switch session")
 		a.await("2 attached *")
+		a.await("2 windows")
 		a.await("detached")
 		a.write("\x1b[B\r")
 		a.await("personal-token")
@@ -384,4 +402,6 @@ func TestE2E(t *testing.T) {
 		require.Eventually(t, func() bool { return syscall.Kill(pid, 0) == syscall.ESRCH }, 3*time.Second, 10*time.Millisecond)
 		require.Eventually(t, func() bool { return strings.Contains(h.cli("-ls"), "No sessions.") }, 3*time.Second, 20*time.Millisecond)
 	})
+	runRobustness(t, bin)
+	runStartup(t, bin)
 }
