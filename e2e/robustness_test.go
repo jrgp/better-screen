@@ -17,10 +17,51 @@ import (
 	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ghostty "go.mitchellh.com/libghostty"
 	"golang.org/x/term"
 )
 
 func runRobustness(t *testing.T, bin string) {
+	t.Run("closing-background-window-preserves-selection", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 24, "-S", "window-exit")
+		a.await("bs$ ")
+		a.write("\x01c")
+		a.command("printf 'window-%s\\n' one", "window-one")
+		a.write("\x01c")
+		a.command("printf 'window-%s\\n' two", "window-two")
+		a.write("\x010")
+		a.command("printf 'exit-%s\\n' queued; sleep 0.2; exit", "exit-queued")
+		a.write("\x012")
+		a.await("window-two")
+		require.Eventually(t, func() bool { return strings.Contains(h.cli("-ls"), "2 windows") }, 5*time.Second, 20*time.Millisecond)
+		a.await("window-two")
+		a.absent("window-one")
+		a.write("\x011")
+		a.await("window-one")
+	})
+	t.Run("osc-color-restoration", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 24, "-S", "colors")
+		a.await("bs$ ")
+		a.command("printf '\\033]4;1;rgb:11/22/33\\007\\033]10;rgb:44/55/66\\007\\033[2J\\033[2;2H\\033[31mINDEX\\033[39mDEFAULT\\033[6;8H'; sleep 60", "INDEXDEFAULT")
+		a.write("\x01d")
+		a.exited()
+		b := h.client(80, 24, "-r", "colors")
+		b.await("INDEXDEFAULT")
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		for _, tc := range []struct {
+			x     uint16
+			color ghostty.ColorRGB
+		}{{1, ghostty.ColorRGB{R: 17, G: 34, B: 51}}, {6, ghostty.ColorRGB{R: 68, G: 85, B: 102}}} {
+			ref, err := b.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: tc.x, Y: 1})
+			require.NoError(t, err)
+			style, err := ref.Style()
+			require.NoError(t, err)
+			assert.Equal(t, tc.color, style.FgColor().RGB)
+		}
+	})
 	t.Run("vim-less-htop", func(t *testing.T) {
 		for _, app := range []struct{ name, command, marker, quit string }{
 			{"vim", "vim -Nu NONE -n fixture.txt", "APPLICATION-FIXTURE-000", ":q!\r"},
@@ -122,10 +163,22 @@ func runRobustness(t *testing.T, bin string) {
 				syscall.Kill(background, syscall.SIGKILL)
 			}
 		})
-		c.command("printf 'foreground-%s\\n' ready; sleep 600", "foreground-ready")
+		c.command("sh -c 'printf \"foreground-%s:%s\\n\" pid $$; exec sleep 600'", "foreground-pid:")
+		text = c.text()
+		var foreground int
+		_, err = fmt.Sscanf(text[strings.Index(text, "foreground-pid:"):], "foreground-pid:%d", &foreground)
+		require.NoError(t, err)
+		require.Positive(t, foreground)
+		t.Cleanup(func() {
+			if syscall.Kill(foreground, 0) == nil {
+				syscall.Kill(foreground, syscall.SIGKILL)
+			}
+		})
 		h.stopDaemon()
 		require.Eventually(t, func() bool { return syscall.Kill(background, 0) == syscall.ESRCH }, 5*time.Second, 20*time.Millisecond,
 			"background process %d survived daemon shutdown", background)
+		require.Eventually(t, func() bool { return syscall.Kill(foreground, 0) == syscall.ESRCH }, 5*time.Second, 20*time.Millisecond,
+			"foreground process %d survived daemon shutdown", foreground)
 	})
 
 	t.Run("malformed-and-slow-clients", func(t *testing.T) {

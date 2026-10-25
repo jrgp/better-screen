@@ -21,6 +21,7 @@ import (
 type client struct {
 	conn       *net.UnixConn
 	out        io.Writer
+	tty        *os.File
 	cols, rows int
 	current    response
 	previous   *vt.Frame
@@ -54,7 +55,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 	if err != nil {
 		return err
 	}
-	c := &client{conn: conn, out: out, cols: cols, rows: rows}
+	c := &client{conn: conn, out: out, tty: in, cols: cols, rows: rows}
 	r.Cols, r.Rows = cols, rows
 	if err := c.send(r); err != nil {
 		return err
@@ -65,6 +66,9 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 		return err
 	}
 	conn.SetReadDeadline(time.Time{})
+	if initial.Version != protocolVersion {
+		return fmt.Errorf("incompatible daemon protocol")
+	}
 	if initial.Error != "" {
 		return errors.New(initial.Error)
 	}
@@ -267,7 +271,14 @@ func (c *client) input(data []byte) (bool, error) {
 			case 'd':
 				return true, c.send(request{Op: "detach"})
 			case 'F':
-				op = "fit"
+				cols, rows, err := dimensions(c.tty)
+				if err != nil {
+					return false, err
+				}
+				c.cols, c.rows = cols, rows
+				if err := c.send(request{Op: "fit", Cols: cols, Rows: rows}); err != nil {
+					return false, err
+				}
 			case 's', '"', '?':
 				c.mode = map[byte]string{'s': "sessions", '"': "windows", '?': "help"}[b]
 				c.choice, c.previous = 0, nil

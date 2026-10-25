@@ -20,6 +20,15 @@ import (
 )
 
 func runStartup(t *testing.T, bin string) {
+	t.Run("version-without-home", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, bin, "-v")
+		cmd.Env = append(os.Environ(), "HOME=")
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+		assert.Equal(t, "bs 0.1.0\n", string(out))
+	})
 	t.Run("automatic-daemon-and-stale-socket", func(t *testing.T) {
 		home, err := os.MkdirTemp("", "bs-auto-")
 		require.NoError(t, err)

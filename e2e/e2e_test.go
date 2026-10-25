@@ -275,6 +275,12 @@ func TestE2E(t *testing.T) {
 		b.command("printf 'unchanged:'; stty size", "unchanged:30 100")
 		b.write("\x01F")
 		b.command("printf 'refit:'; stty size", "refit:28 90")
+		require.NoError(t, pty.Setsize(b.pty, &pty.Winsize{Cols: 85, Rows: 26}))
+		b.mu.Lock()
+		require.NoError(t, b.screen.Resize(85, 26, 0, 0))
+		b.mu.Unlock()
+		b.write("\x01F")
+		b.command("printf 'immediate-fit:'; stty size", "immediate-fit:26 85")
 	})
 
 	t.Run("session-switcher", func(t *testing.T) {

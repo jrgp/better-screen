@@ -4,8 +4,10 @@ package vt
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	ghostty "go.mitchellh.com/libghostty"
 )
 
@@ -17,6 +19,7 @@ type Frame struct {
 	CursorStyle int
 	Modes       []int
 	Keypad      bool
+	Style       string
 }
 
 func New(cols, rows int, options ...ghostty.TerminalOption) (*ghostty.Terminal, error) {
@@ -64,6 +67,41 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 	rows = min(rows, int(height))
 	offset = min(max(offset, 0), int(history))
 	f := Frame{Lines: make([]string, rows)}
+	palette, err := t.ColorPalette()
+	if err != nil {
+		return Frame{}, err
+	}
+	defaultPalette, err := t.ColorPaletteDefault()
+	if err != nil {
+		return Frame{}, err
+	}
+	overrides := make(map[int]ghostty.ColorRGB)
+	if palette != nil && defaultPalette != nil {
+		for i, color := range *palette {
+			if color != defaultPalette[i] {
+				overrides[i] = color
+			}
+		}
+	}
+	defaults := make(map[string]string)
+	for _, item := range []struct {
+		code string
+		get  func() (*ghostty.ColorRGB, error)
+	}{{"39", t.ColorForeground}, {"49", t.ColorBackground}} {
+		color, err := item.get()
+		if err != nil {
+			return Frame{}, err
+		}
+		if color != nil {
+			channel := "38"
+			if item.code == "49" {
+				channel = "48"
+			}
+			value := fmt.Sprintf("%s;2;%d;%d;%d", channel, color.R, color.G, color.B)
+			defaults[item.code] = value
+			f.Style += "\x1b[" + value + "m"
+		}
+	}
 	for y := range rows {
 		tag, row := ghostty.PointTagActive, y
 		if offset > 0 {
@@ -91,7 +129,8 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 		if err != nil {
 			return Frame{}, err
 		}
-		f.Lines[y] = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		f.Lines[y] = resolveColors(line, overrides, defaults)
 	}
 	x, err := t.CursorX()
 	if err != nil {
@@ -148,7 +187,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 // Draw updates changed rows only. Autowrap is disabled so the bottom-right cell
 // cannot scroll the physical terminal. CUP clears pending-wrap state.
 func Draw(previous *Frame, f Frame) string {
-	if previous != nil && slices.Equal(previous.Lines, f.Lines) && previous.X == f.X && previous.Y == f.Y && previous.Visible == f.Visible && previous.CursorStyle == f.CursorStyle && slices.Equal(previous.Modes, f.Modes) && previous.Keypad == f.Keypad {
+	if previous != nil && slices.Equal(previous.Lines, f.Lines) && previous.Style == f.Style && previous.X == f.X && previous.Y == f.Y && previous.Visible == f.Visible && previous.CursorStyle == f.CursorStyle && slices.Equal(previous.Modes, f.Modes) && previous.Keypad == f.Keypad {
 		return ""
 	}
 	var b strings.Builder
@@ -157,10 +196,10 @@ func Draw(previous *Frame, f Frame) string {
 		b.WriteString("\x1b[?6l\x1b[?69l\x1b[r\x1b[2J")
 	}
 	for y, line := range f.Lines {
-		if previous != nil && y < len(previous.Lines) && line == previous.Lines[y] {
+		if previous != nil && previous.Style == f.Style && y < len(previous.Lines) && line == previous.Lines[y] {
 			continue
 		}
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m\x1b[2K%s", y+1, line)
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m%s\x1b[2K%s", y+1, f.Style, line)
 	}
 	if previous != nil {
 		for y := len(f.Lines); y < len(previous.Lines); y++ {
@@ -195,4 +234,52 @@ func Draw(previous *Frame, f Frame) string {
 		b.WriteString("\x1b[?25h")
 	}
 	return b.String()
+}
+
+// Resolve OSC color overrides into SGR RGB, never changing the outer terminal's
+// global palette. Ghostty still does all cell/style formatting; x/ansi identifies
+// complete sequences before the formatter's known SGR color tokens are replaced.
+func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[string]string) string {
+	if len(palette) == 0 && len(defaults) == 0 {
+		return line
+	}
+	var out strings.Builder
+	for len(line) > 0 {
+		seq, _, n, _ := ansi.DecodeSequence(line, 0, nil)
+		line = line[n:]
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			params := strings.Split(seq[2:len(seq)-1], ";")
+			var result []string
+			for i := 0; i < len(params); i++ {
+				value := params[i]
+				if value == "0" || value == "" {
+					result = append(result, "0")
+					for _, key := range []string{"39", "49"} {
+						if s, ok := defaults[key]; ok {
+							result = append(result, s)
+						}
+					}
+				} else if replacement, ok := defaults[value]; ok {
+					result = append(result, replacement)
+				} else if (value == "38" || value == "48" || value == "58") && i+2 < len(params) && params[i+1] == "5" {
+					index, err := strconv.Atoi(params[i+2])
+					if color, ok := palette[index]; err == nil && ok {
+						result = append(result, fmt.Sprintf("%s;2;%d;%d;%d", value, color.R, color.G, color.B))
+					} else {
+						result = append(result, params[i:i+3]...)
+					}
+					i += 2
+				} else if (value == "38" || value == "48" || value == "58") && i+4 < len(params) && params[i+1] == "2" {
+					result = append(result, params[i:i+5]...)
+					i += 4
+				} else {
+					result = append(result, value)
+				}
+			}
+			out.WriteString("\x1b[" + strings.Join(result, ";") + "m")
+		} else {
+			out.WriteString(seq)
+		}
+	}
+	return out.String()
 }

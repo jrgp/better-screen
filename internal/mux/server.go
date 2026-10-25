@@ -470,6 +470,11 @@ func (s *Server) handle(p *peer, r request) {
 			}
 			s.resetViews(session)
 		case "fit":
+			if !validSize(r.Cols, r.Rows) {
+				s.fail(p, fmt.Errorf("terminal size out of range"))
+				return
+			}
+			p.cols, p.rows = r.Cols, r.Rows
 			for _, win := range session.windows {
 				if err := pty.Setsize(win.pty, &pty.Winsize{Cols: uint16(p.cols), Rows: uint16(p.rows)}); err != nil {
 					s.fail(p, err)
@@ -678,6 +683,11 @@ func (s *Server) stopWindow(w *window) {
 	case <-time.After(500 * time.Millisecond):
 		unix.Kill(-w.cmd.Process.Pid, unix.SIGKILL)
 		<-w.wait
+	}
+	for _, pid := range jobs {
+		if sid, err := unix.Getsid(pid); err == nil && sid == w.cmd.Process.Pid {
+			unix.Kill(pid, unix.SIGKILL)
+		}
 	}
 	w.term.Close()
 }

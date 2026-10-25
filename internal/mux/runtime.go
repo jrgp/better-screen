@@ -25,6 +25,9 @@ func owned(info os.FileInfo, mode os.FileMode) error {
 }
 
 func runtimeDir(home string) (string, error) {
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("HOME must be an absolute path")
+	}
 	dir := filepath.Join(home, ".bs")
 	if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", err

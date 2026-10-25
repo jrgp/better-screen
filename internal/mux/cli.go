@@ -24,11 +24,11 @@ func Main(args []string, in, out *os.File, stderr io.Writer) int {
 }
 
 func run(args []string, in, out *os.File, stderr io.Writer) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
 	if len(args) == 1 && args[0] == "__daemon" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 		signal.Ignore(syscall.SIGHUP)
@@ -68,6 +68,10 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 	if selected > 1 || (*detach && *reattach == "") {
 		return fmt.Errorf("use bs [-S name | -ls | -r name | -x name | -d -r name]")
 	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
 	conn, err := connect(home, true)
 	if err != nil {
 		return err
@@ -83,6 +87,9 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 		var result response
 		if err := receive(conn, &result, maxMessage); err != nil {
 			return err
+		}
+		if result.Version != protocolVersion {
+			return fmt.Errorf("incompatible daemon protocol")
 		}
 		if result.Error != "" {
 			return errors.New(result.Error)
