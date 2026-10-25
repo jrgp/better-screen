@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,123 @@ import (
 )
 
 func runWindowLifecycle(t *testing.T, bin string) {
+	for _, action := range []struct {
+		name, keys string
+	}{{"shell-exit", "exit\r"}, {"window-kill", "\x01k"}, {"last-pane-kill", "\x01K"}} {
+		t.Run("window-renumbering-"+action.name, func(t *testing.T) {
+			h := newHarness(t, bin)
+			a := h.client(80, 16, "-S", "order")
+			a.await("bs$ ")
+			create := func(label string) {
+				a.command("TOKEN="+label+"; printf '\\033]2;order-%s\\007\\033[2J\\033[Hwindow-%s\\n' \"$TOKEN\" \"$TOKEN\"", "window-"+label)
+			}
+			create("A")
+			for _, label := range []string{"B", "C", "D", "E"} {
+				a.write("\x01c")
+				create(label)
+			}
+			b := h.client(80, 16, "-x", "order")
+			b.await("window-E")
+			expect := func(active int, labels ...string) {
+				t.Helper()
+				var numbers []string
+				for i := range labels {
+					numbers = append(numbers, fmt.Sprint(i))
+				}
+				picker := strings.Join(numbers, " ")
+				row := picker + strings.Repeat(" ", 80-len(picker)-len("order")) + "order"
+				for _, c := range []*terminalClient{a, b} {
+					c.await("window-" + labels[active])
+					c.awaitRow(15, row)
+					c.pickerColors(15, active, len(labels))
+				}
+			}
+			a.write("\x012")
+			expect(2, "A", "B", "C", "D", "E")
+			a.write(action.keys)
+			labels := []string{"A", "B", "D", "E"}
+			expect(2, labels...)
+			for _, active := range []int{3, 0, 1, 2} {
+				a.write("\x01n")
+				expect(active, labels...)
+			}
+			for _, active := range []int{1, 0, 3, 2} {
+				a.write("\x01p")
+				expect(active, labels...)
+			}
+			a.write("\x01c")
+			create("F")
+			labels = append(labels, "F")
+			expect(4, labels...)
+			for active := range labels {
+				a.write("\x01" + fmt.Sprint(active))
+				expect(active, labels...)
+			}
+			a.write("\x01\"")
+			a.await("bs - Windows")
+			for i, label := range labels {
+				prefix, suffix := "  ", ""
+				if i == 0 {
+					prefix = "> "
+				}
+				if i == 4 {
+					suffix = " *"
+				}
+				a.awaitRow(i+1, fmt.Sprintf("%s%d  order-%s%s", prefix, i, label, suffix))
+			}
+			a.write("\x1b[B\x1b[B\r")
+			expect(2, labels...)
+			a.write("\x01d")
+			a.exited()
+			a = h.client(80, 16, "-x", "order")
+			expect(2, labels...)
+			a.write("\x010")
+			expect(0, labels...)
+			a.write(action.keys)
+			labels = []string{"B", "D", "E", "F"}
+			expect(0, labels...)
+			a.write("\x01p")
+			expect(3, labels...)
+			a.write(action.keys)
+			labels = []string{"B", "D", "E"}
+			expect(2, labels...)
+			a.write("\x01c")
+			create("G")
+			labels = append(labels, "G")
+			expect(3, labels...)
+			a.write("\x01n")
+			expect(0, labels...)
+			a.write("\x01p")
+			expect(3, labels...)
+		})
+	}
+
+	t.Run("background-window-exit-preserves-selection-and-renumbers", func(t *testing.T) {
+		h := newHarness(t, bin)
+		c := h.client(80, 16, "-S", "background")
+		c.await("bs$ ")
+		c.command("printf '%s\\n' $$ > first.pid; exec sh -c 'printf \"background-%s\\n\" ready; read answer'", "background-ready")
+		for _, label := range []string{"B", "C"} {
+			c.write("\x01c")
+			c.command("TOKEN="+label+"; printf '\\033[2J\\033[Hwindow-%s\\n' \"$TOKEN\"", "window-"+label)
+		}
+		pidText, err := os.ReadFile(filepath.Join(h.home, "first.pid"))
+		require.NoError(t, err)
+		pid, err := strconv.Atoi(strings.TrimSpace(string(pidText)))
+		require.NoError(t, err)
+		require.Positive(t, pid)
+		require.NoError(t, syscall.Kill(pid, syscall.SIGTERM))
+		c.awaitRow(15, "0 1"+strings.Repeat(" ", 67)+"background")
+		c.pickerColors(15, 1, 2)
+		c.command("printf 'selected-%s\\n' \"$TOKEN\"", "selected-C")
+		c.write("\x01n")
+		c.await("window-B")
+		c.pickerColors(15, 0, 2)
+		c.write("\x01p")
+		c.await("selected-C")
+		c.pickerColors(15, 1, 2)
+	})
+
 	t.Run("daemon-survives-remaining-and-detached-sessions", func(t *testing.T) {
 		h := newHarness(t, bin)
 		a := h.client(80, 24, "-S", "keep")

@@ -36,7 +36,6 @@ type pane struct {
 }
 
 type window struct {
-	number  int
 	root    *layout
 	focused *pane
 	borders [][]byte
@@ -493,12 +492,11 @@ func (s *Server) handle(p *peer, r request) {
 			case "prev":
 				session.selected = (session.selected + len(session.windows) - 1) % len(session.windows)
 			case "select":
-				i := slices.IndexFunc(session.windows, func(w *window) bool { return w.number == r.Number })
-				if i < 0 {
+				if r.Number < 0 || r.Number >= len(session.windows) {
 					s.fail(p, fmt.Errorf("no window %d", r.Number))
 					return
 				}
-				session.selected = i
+				session.selected = r.Number
 			}
 			s.resetViews(session)
 		case "fit":
@@ -590,10 +588,9 @@ func (p *peer) resolveScroll(t *ghostty.Terminal) error {
 
 func (s *Server) windowInfos(session *session) []windowInfo {
 	result := make([]windowInfo, 0, len(session.windows))
-	for _, w := range session.windows {
-		result = append(result, windowInfo{Number: w.number, Title: w.focused.title})
+	for number, w := range session.windows {
+		result = append(result, windowInfo{Number: number, Title: w.focused.title})
 	}
-	slices.SortFunc(result, func(a, b windowInfo) int { return a.Number - b.Number })
 	return result
 }
 
@@ -612,7 +609,7 @@ func (s *Server) statusLine(session *session, cols int) string {
 		if i > 0 {
 			picker.WriteByte(' ')
 		}
-		if info.Number == session.windows[session.selected].number {
+		if info.Number == session.selected {
 			picker.WriteString(accent)
 		}
 		fmt.Fprint(&picker, info.Number)
@@ -631,15 +628,11 @@ func (s *Server) newWindow(session *session) error {
 	if len(session.windows) >= maxWindows || total >= maxTotalWindows {
 		return fmt.Errorf("window limit reached")
 	}
-	number := 0
-	for slices.ContainsFunc(session.windows, func(w *window) bool { return w.number == number }) {
-		number++
-	}
 	p, err := s.newPane(session, session.cols, s.contentRows(session.rows))
 	if err != nil {
 		return err
 	}
-	w := &window{number: number, root: &layout{pane: p}, focused: p}
+	w := &window{root: &layout{pane: p}, focused: p}
 	if err := s.resizeWindow(session, w); err != nil {
 		s.stopPane(p)
 		return err
@@ -779,7 +772,7 @@ func (s *Server) paneEvent(e event) {
 			}
 			if e.exited {
 				if e.err != nil {
-					s.log.Printf("session %s window %d pane %d: %v", session.name, w.number, pi, e.err)
+					s.log.Printf("session %s window %d pane %d: %v", session.name, wi, pi, e.err)
 				}
 				if len(panes) == 1 {
 					s.removeWindow(session, wi)
@@ -825,13 +818,12 @@ func (s *Server) render() {
 			continue
 		}
 		session := p.session
-		w := session.windows[session.selected]
 		frame, err := s.capture(p)
 		if err != nil {
 			s.fail(p, err)
 			continue
 		}
-		s.reply(p, response{Frame: &frame, Session: session.name, Window: w.number, Windows: s.windowInfos(session)})
+		s.reply(p, response{Frame: &frame, Session: session.name, Window: session.selected, Windows: s.windowInfos(session)})
 		p.force = false
 	}
 	for _, session := range s.sessions {

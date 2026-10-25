@@ -106,11 +106,13 @@ func runStatus(t *testing.T, bin string) {
 			require.NotContains(t, change, "\x1b[2J", "window switches should use incremental rendering")
 		}
 		c.write("\x01k")
-		left = "0 1 2 3 4 5 6 7 8 10 11"
+		left = "0 1 2 3 4 5 6 7 8 9 10"
 		c.awaitRow(15, left+strings.Repeat(" ", 100-len(left)-5)+"named")
+		c.pickerColors(15, 9, 11)
 		c.write("\x01c")
 		left = "0 1 2 3 4 5 6 7 8 9 10 11"
 		c.awaitRow(15, want)
+		c.pickerColors(15, 11, 12)
 		require.NoError(t, pty.Setsize(c.pty, &pty.Winsize{Cols: 85, Rows: 14}))
 		c.mu.Lock()
 		require.NoError(t, c.screen.Resize(85, 14, 0, 0))

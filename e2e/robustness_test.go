@@ -37,8 +37,11 @@ func runRobustness(t *testing.T, bin string) {
 		require.Eventually(t, func() bool { return strings.Contains(h.cli("-ls"), "2 windows") }, 5*time.Second, 20*time.Millisecond)
 		a.await("window-two")
 		a.absent("window-one")
-		a.write("\x011")
+		a.awaitRow(23, "0 1"+strings.Repeat(" ", 66)+"window-exit")
+		a.pickerColors(23, 1, 2)
+		a.write("\x010")
 		a.await("window-one")
+		a.pickerColors(23, 0, 2)
 	})
 	t.Run("osc-color-restoration", func(t *testing.T) {
 		h := newHarness(t, bin)

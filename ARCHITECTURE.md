@@ -84,6 +84,11 @@ killing a pane collapses its parent split and expands the surviving subtree;
 surviving processes are not restarted. Lowercase `k` still kills the entire
 window; uppercase `K` kills just its focused pane.
 
+Window numbers are their positions in the session's ordered window list.
+Closing a window renumbers survivors from zero without changing their order;
+new windows append to the end. Next/previous wrap through this same order,
+matching numeric selection, the picker and the window menu.
+
 If a fitted terminal becomes too small for the tree, only the focused pane
 is displayed. Hidden panes stay alive at 1x1; cycling focus still works.
 Fitting a larger terminal restores the saved layout. Splits that cannot fit
