@@ -438,4 +438,6 @@ func TestE2E(t *testing.T) {
 	runWindowLifecycle(t, bin)
 	runStatus(t, bin)
 	runSplits(t, bin)
+	runPaneLifecycle(t, bin)
+	runPaneApplications(t, bin)
 }
