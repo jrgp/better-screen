@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/jrgp/bs/internal/vt"
 	"github.com/shirou/gopsutil/v4/process"
@@ -479,11 +480,11 @@ func (s *Server) handle(p *peer, r request) {
 			}
 			p.cols, p.rows = r.Cols, r.Rows
 			for _, win := range session.windows {
-				if err := pty.Setsize(win.pty, &pty.Winsize{Cols: uint16(p.cols), Rows: uint16(p.rows)}); err != nil {
+				if err := pty.Setsize(win.pty, &pty.Winsize{Cols: uint16(p.cols), Rows: uint16(s.contentRows(p.rows))}); err != nil {
 					s.fail(p, err)
 					return
 				}
-				if err := win.term.Resize(uint16(p.cols), uint16(p.rows), 0, 0); err != nil {
+				if err := win.term.Resize(uint16(p.cols), uint16(s.contentRows(p.rows)), 0, 0); err != nil {
 					s.fail(p, err)
 					return
 				}
@@ -568,7 +569,34 @@ func (s *Server) windowInfos(session *session) []windowInfo {
 	for _, w := range session.windows {
 		result = append(result, windowInfo{Number: w.number, Title: w.title})
 	}
+	slices.SortFunc(result, func(a, b windowInfo) int { return a.Number - b.Number })
 	return result
+}
+
+const accent = "\x1b[38;2;135;206;250m"
+
+func (s *Server) contentRows(rows int) int {
+	if s.config.StatusLine {
+		return rows - 1
+	}
+	return rows
+}
+
+func (s *Server) statusLine(session *session, cols int) string {
+	var picker strings.Builder
+	for i, info := range s.windowInfos(session) {
+		if i > 0 {
+			picker.WriteByte(' ')
+		}
+		if info.Number == session.windows[session.selected].number {
+			picker.WriteString(accent)
+		}
+		fmt.Fprint(&picker, info.Number)
+		picker.WriteString("\x1b[39m")
+	}
+	name := session.name[:min(cols, len(session.name))]
+	left := ansi.Truncate(picker.String(), max(0, cols-len(name)-1), "")
+	return "\x1b[0m" + left + "\x1b[0m" + strings.Repeat(" ", cols-len(name)-ansi.StringWidth(left)) + name
 }
 
 func (s *Server) newWindow(session *session) error {
@@ -584,7 +612,7 @@ func (s *Server) newWindow(session *session) error {
 		number++
 	}
 	w := &window{number: number, input: make(chan []byte, 64), done: make(chan struct{}), wait: make(chan struct{}), title: filepath.Base(s.shell)}
-	term, err := vt.New(session.cols, session.rows, ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
+	term, err := vt.New(session.cols, s.contentRows(session.rows), ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
 		if !s.queueInput(w, append([]byte(nil), data...)) {
 			w.responseErr = fmt.Errorf("terminal response buffer full")
 		}
@@ -597,7 +625,7 @@ func (s *Server) newWindow(session *session) error {
 	cmd.Dir = s.home
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "BS_SESSION="+session.name)
 	w.cmd = cmd
-	w.pty, err = pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(session.cols), Rows: uint16(session.rows)})
+	w.pty, err = pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(session.cols), Rows: uint16(s.contentRows(session.rows))})
 	if err != nil {
 		term.Close()
 		return err
@@ -752,10 +780,14 @@ func (s *Server) render() {
 			s.fail(p, err)
 			continue
 		}
-		frame, err := vt.Capture(w.term, p.cols, p.rows, p.offset)
+		frame, err := vt.Capture(w.term, p.cols, s.contentRows(p.rows), p.offset)
 		if err != nil {
 			s.fail(p, err)
 			continue
+		}
+		frame.Lines = append(frame.Lines, make([]string, p.rows-len(frame.Lines))...)
+		if s.config.StatusLine {
+			frame.Lines[p.rows-1] = s.statusLine(session, p.cols)
 		}
 		s.reply(p, response{Frame: &frame, Session: session.name, Window: w.number, Windows: s.windowInfos(session)})
 		p.force = false

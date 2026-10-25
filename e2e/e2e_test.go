@@ -33,9 +33,18 @@ type harness struct {
 
 func newHarness(t *testing.T, bin string, shell ...string) *harness {
 	t.Helper()
+	return newConfiguredHarness(t, bin, "", shell...)
+}
+
+func newConfiguredHarness(t *testing.T, bin, config string, shell ...string) *harness {
+	t.Helper()
 	// Keep Unix socket paths below the macOS 104-byte limit.
 	home, err := os.MkdirTemp("", "bs-e2e-")
 	require.NoError(t, err)
+	if config != "" {
+		require.NoError(t, os.Mkdir(filepath.Join(home, ".bs"), 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(home, ".bs", "config.json"), []byte(config), 0600))
+	}
 	h := &harness{t: t, bin: bin, home: home, daemonDone: make(chan struct{})}
 	h.daemon = exec.Command(bin, "__daemon")
 	h.daemon.Env = h.env()
@@ -280,23 +289,23 @@ func TestE2E(t *testing.T) {
 		a.await("bs$ ")
 		b := h.client(100, 30, "-x", "size")
 		b.await("bs$ ")
-		a.command("printf 'size:'; stty size", "size:24 80")
+		a.command("printf 'size:'; stty size", "size:23 80")
 		b.write("\x01F")
-		b.command("printf 'fit:'; stty size", "fit:30 100")
-		a.await("fit:30 100")
+		b.command("printf 'fit:'; stty size", "fit:29 100")
+		a.await("fit:29 100")
 		require.NoError(t, pty.Setsize(b.pty, &pty.Winsize{Cols: 90, Rows: 28}))
 		b.mu.Lock()
 		require.NoError(t, b.screen.Resize(90, 28, 0, 0))
 		b.mu.Unlock()
-		b.command("printf 'unchanged:'; stty size", "unchanged:30 100")
+		b.command("printf 'unchanged:'; stty size", "unchanged:29 100")
 		b.write("\x01F")
-		b.command("printf 'refit:'; stty size", "refit:28 90")
+		b.command("printf 'refit:'; stty size", "refit:27 90")
 		require.NoError(t, pty.Setsize(b.pty, &pty.Winsize{Cols: 85, Rows: 26}))
 		b.mu.Lock()
 		require.NoError(t, b.screen.Resize(85, 26, 0, 0))
 		b.mu.Unlock()
 		b.write("\x01F")
-		b.command("printf 'immediate-fit:'; stty size", "immediate-fit:26 85")
+		b.command("printf 'immediate-fit:'; stty size", "immediate-fit:25 85")
 	})
 
 	t.Run("session-switcher", func(t *testing.T) {
@@ -350,9 +359,9 @@ func TestE2E(t *testing.T) {
 		a.absent("live-continues")
 		a.write("\x1b[B")
 		a.await("line-017")
-		a.absent("line-005")
+		a.absent("line-006")
 		a.write("\x1b[A")
-		a.await("line-005")
+		a.await("line-006")
 		a.write("\x1b[6~")
 		a.await("line-027")
 		a.absent("line-010")
@@ -427,4 +436,5 @@ func TestE2E(t *testing.T) {
 	runRobustness(t, bin)
 	runStartup(t, bin)
 	runWindowLifecycle(t, bin)
+	runStatus(t, bin)
 }

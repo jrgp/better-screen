@@ -181,9 +181,6 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 				return nil
 			}
 			if r.Frame != nil {
-				if r.Session != c.current.Session || r.Window != c.current.Window {
-					c.previous = nil
-				}
 				c.current = r
 			}
 			if r.Sessions != nil {
@@ -434,6 +431,10 @@ func (c *client) draw() error {
 		if len(f.Lines) > 0 {
 			f.Lines[len(f.Lines)-1] = ansi.Truncate("[bs: "+cleanText(c.status)+"]", c.cols, "")
 		}
+	}
+	f.Lines = f.Lines[:min(len(f.Lines), c.rows)]
+	if c.previous != nil && len(c.previous.Lines) > c.rows {
+		c.previous = nil
 	}
 	output := vt.Draw(c.previous, f)
 	if _, err := io.WriteString(c.out, output); err != nil {
