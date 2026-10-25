@@ -19,7 +19,7 @@ func owned(info os.FileInfo, mode os.FileMode) error {
 		return fmt.Errorf("%s is not owned by this user", info.Name())
 	}
 	if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != mode {
-		return fmt.Errorf("unsafe permissions or symlink: %s (expected %04o)", info.Name(), mode)
+		return fmt.Errorf("unsafe permissions or symlink: %s (%s; expected %04o)", info.Name(), info.Mode(), mode)
 	}
 	return nil
 }

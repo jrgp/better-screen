@@ -124,7 +124,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	// Publish a 0600 socket from its first instant of existence. Restore the
 	// inherited mask before starting workers or child processes.
-	mask := unix.Umask(0077)
+	mask := unix.Umask(0177)
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	unix.Umask(mask)
 	if err != nil {
@@ -132,10 +132,6 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	listener.SetUnlinkOnClose(false)
 	defer listener.Close()
-	if err := os.Chmod(path, 0600); err != nil {
-		os.Remove(path)
-		return err
-	}
 	socketInfo, err := checkSocket(path)
 	if err != nil {
 		return err
