@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,11 +22,13 @@ import (
 )
 
 type harness struct {
-	t         *testing.T
-	bin, home string
-	daemon    *exec.Cmd
-	log       bytes.Buffer
-	stopped   bool
+	t          *testing.T
+	bin, home  string
+	daemon     *exec.Cmd
+	daemonDone chan struct{}
+	daemonErr  error
+	log        bytes.Buffer
+	stopped    bool
 }
 
 func newHarness(t *testing.T, bin string, shell ...string) *harness {
@@ -35,7 +36,7 @@ func newHarness(t *testing.T, bin string, shell ...string) *harness {
 	// Keep Unix socket paths below the macOS 104-byte limit.
 	home, err := os.MkdirTemp("", "bs-e2e-")
 	require.NoError(t, err)
-	h := &harness{t: t, bin: bin, home: home}
+	h := &harness{t: t, bin: bin, home: home, daemonDone: make(chan struct{})}
 	h.daemon = exec.Command(bin, "__daemon")
 	h.daemon.Env = h.env()
 	if len(shell) > 0 {
@@ -43,18 +44,18 @@ func newHarness(t *testing.T, bin string, shell ...string) *harness {
 	}
 	h.daemon.Stderr = &h.log
 	require.NoError(t, h.daemon.Start())
+	go func() {
+		h.daemonErr = h.daemon.Wait()
+		close(h.daemonDone)
+	}()
 	t.Cleanup(func() {
 		h.stopDaemon()
 		assert.NoFileExists(t, filepath.Join(home, ".bs", "bs.sock"))
 		require.NoError(t, os.RemoveAll(home))
 	})
 	require.Eventually(t, func() bool {
-		c, err := net.DialTimeout("unix", filepath.Join(home, ".bs", "bs.sock"), 100*time.Millisecond)
-		if err != nil {
-			return false
-		}
-		c.Close()
-		return true
+		info, err := os.Lstat(filepath.Join(home, ".bs", "bs.sock"))
+		return err == nil && info.Mode()&os.ModeSocket != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	return h
 }
@@ -80,17 +81,28 @@ func (h *harness) stopDaemon() {
 		return
 	}
 	h.stopped = true
-	require.NoError(h.t, h.daemon.Process.Signal(syscall.SIGTERM))
-	done := make(chan error, 1)
-	go func() { done <- h.daemon.Wait() }()
+	if err := h.daemon.Process.Signal(syscall.SIGTERM); err != nil {
+		require.ErrorIs(h.t, err, os.ErrProcessDone)
+	}
 	select {
-	case err := <-done:
-		assert.NoError(h.t, err, h.log.String())
+	case <-h.daemonDone:
+		assert.NoError(h.t, h.daemonErr, h.log.String())
 	case <-time.After(8 * time.Second):
 		h.daemon.Process.Kill()
-		<-done
+		<-h.daemonDone
 		h.t.Error("daemon cleanup timed out")
 	}
+}
+
+func (h *harness) awaitDaemonExit() {
+	h.t.Helper()
+	select {
+	case <-h.daemonDone:
+		require.NoError(h.t, h.daemonErr, h.log.String())
+	case <-time.After(5 * time.Second):
+		h.t.Fatal("daemon did not exit after its last session")
+	}
+	require.NoFileExists(h.t, filepath.Join(h.home, ".bs", "bs.sock"))
 }
 
 type terminalClient struct {

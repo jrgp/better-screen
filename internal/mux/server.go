@@ -196,6 +196,10 @@ func (s *Server) Run(ctx context.Context) error {
 			} else if e.err != nil {
 				return e.err
 			}
+			// Let closing peers flush their final responses before shutting down.
+			if len(s.sessions) == 0 && len(s.peers) == 0 {
+				return nil
+			}
 		case <-tick.C:
 			s.render()
 		}

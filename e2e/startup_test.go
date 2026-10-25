@@ -69,8 +69,30 @@ func runStartup(t *testing.T, bin string) {
 			})
 		}
 		wg.Wait()
-		pid := serverPID(t, socket)
+		require.NoFileExists(t, socket)
+		require.NoFileExists(t, filepath.Join(home, ".bs", "daemon.log"))
 		assert.Contains(t, h.cli("-v"), "bs 0.1.0")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		noninteractive := exec.CommandContext(ctx, bin)
+		noninteractive.Env = h.env()
+		out, err := noninteractive.CombinedOutput()
+		require.Error(t, err)
+		assert.Contains(t, string(out), "an interactive terminal is required")
+		require.Eventually(t, func() bool { _, err := os.Lstat(socket); return os.IsNotExist(err) }, 5*time.Second, 10*time.Millisecond)
+		var concurrent []*terminalClient
+		for range 8 {
+			concurrent = append(concurrent, h.client(80, 24))
+		}
+		for _, c := range concurrent {
+			c.await("bs$ ")
+		}
+		assert.Equal(t, 8, strings.Count(h.cli("-ls"), "\n"))
+		for _, c := range concurrent[:7] {
+			c.write("\x01k")
+			c.exited()
+		}
+		pid := serverPID(t, socket)
 		require.NoError(t, syscall.Kill(pid, syscall.SIGKILL))
 		require.Eventually(t, func() bool {
 			c, err := net.DialTimeout("unix", socket, 50*time.Millisecond)
@@ -82,17 +104,25 @@ func runStartup(t *testing.T, bin string) {
 		}, 3*time.Second, 10*time.Millisecond)
 		require.FileExists(t, socket)
 		assert.Contains(t, h.cli("-ls"), "No sessions.")
-		assert.NotEqual(t, pid, serverPID(t, socket))
+		require.FileExists(t, socket)
 		a := h.client(80, 24)
 		a.await("bs$ ")
+		assert.NotEqual(t, pid, serverPID(t, socket))
 		b := h.client(80, 24)
 		b.await("bs$ ")
 		assert.Contains(t, h.cli("-ls"), "1\t")
 		assert.Contains(t, h.cli("-ls"), "2\t")
-		a.write("\x01d")
+		a.write("exit\r")
 		a.exited()
-		b.write("\x01d")
+		b.write("exit\r")
 		b.exited()
+		require.Eventually(t, func() bool { _, err := os.Lstat(socket); return os.IsNotExist(err) }, 5*time.Second, 10*time.Millisecond)
+		restarted := h.client(80, 24, "-S", "restarted")
+		restarted.await("bs$ ")
+		restarted.command("printf 'restarted-%s\\n' daemon", "restarted-daemon")
+		restarted.write("\x01k")
+		restarted.exited()
+		require.Eventually(t, func() bool { _, err := os.Lstat(socket); return os.IsNotExist(err) }, 5*time.Second, 10*time.Millisecond)
 	})
 
 	t.Run("cli-errors-and-versioned-ipc", func(t *testing.T) {

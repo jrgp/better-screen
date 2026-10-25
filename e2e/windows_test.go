@@ -1,9 +1,7 @@
 package e2e
 
 import (
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +14,27 @@ import (
 )
 
 func runWindowLifecycle(t *testing.T, bin string) {
+	t.Run("daemon-survives-remaining-and-detached-sessions", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 24, "-S", "keep")
+		a.await("bs$ ")
+		b := h.client(80, 24, "-S", "close")
+		b.await("bs$ ")
+		b.write("\x01k")
+		b.exited()
+		a.command("printf 'remaining-%s\\n' session", "remaining-session")
+		a.write("\x01d")
+		a.exited()
+		assert.Contains(t, h.cli("-ls"), "keep\t1 windows\tdetached")
+		c := h.client(80, 24, "-r", "keep")
+		c.await("remaining-session")
+		c.write("exit\r")
+		c.exited()
+		h.awaitDaemonExit()
+		assert.Contains(t, h.cli("-ls"), "No sessions.")
+		require.NoFileExists(t, filepath.Join(h.home, ".bs", "bs.sock"))
+	})
+
 	t.Run("bare-multi-attach-validation", func(t *testing.T) {
 		h := newHarness(t, bin)
 		for _, tc := range []struct {
@@ -87,6 +106,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		a.write("exit\r")
 		a.exited()
 		b.exited()
+		h.awaitDaemonExit()
 		assert.Contains(t, h.cli("-ls"), "No sessions.")
 	})
 
@@ -110,14 +130,8 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		defer syscall.Close(fd)
 		_, err = syscall.Write(fd, []byte("exit\n"))
 		require.NoError(t, err)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		require.Eventually(t, func() bool {
-			cmd := exec.CommandContext(ctx, bin, "-ls")
-			cmd.Env = h.env()
-			out, err := cmd.CombinedOutput()
-			return err == nil && strings.Contains(string(out), "No sessions.")
-		}, 5*time.Second, 20*time.Millisecond)
+		h.awaitDaemonExit()
+		assert.Contains(t, h.cli("-ls"), "No sessions.")
 	})
 
 	t.Run("exec-replaced-program-exit-removes-session", func(t *testing.T) {
@@ -127,6 +141,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		a.command("exec sh -c 'printf \"program-%s\\n\" ready; read answer'", "program-ready")
 		a.write("done\r")
 		a.exited()
+		h.awaitDaemonExit()
 		assert.Contains(t, h.cli("-ls"), "No sessions.")
 	})
 
@@ -159,6 +174,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		a.write("\x01k")
 		a.exited()
 		b.exited()
+		h.awaitDaemonExit()
 		assert.Contains(t, h.cli("-ls"), "No sessions.")
 	})
 }

@@ -97,12 +97,26 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	conn, err := connect(home, true)
+	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach}
+	if *reattach != "" {
+		r.Op, r.Name = "attach", *reattach
+	}
+	if multiRequested {
+		r.Op, r.Name, r.Multi = "attach", *multi, true
+	}
+	start := r.Op == "create" && !*list
+	conn, err := connect(home, start)
 	if err != nil {
+		if !start && (errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
+			if *list {
+				fmt.Fprintln(out, "No sessions.")
+				return nil
+			}
+			return fmt.Errorf("no session matching %q", r.Name)
+		}
 		return err
 	}
 	defer conn.Close()
-	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach}
 	if *list {
 		conn.SetDeadline(time.Now().Add(5 * time.Second))
 		r.Op = "list"
@@ -131,12 +145,6 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 			fmt.Fprintf(out, "%s\t%d windows\t%s\n", info.Name, info.Windows, state)
 		}
 		return nil
-	}
-	if *reattach != "" {
-		r.Op, r.Name = "attach", *reattach
-	}
-	if multiRequested {
-		r.Op, r.Name, r.Multi = "attach", *multi, true
 	}
 	return attach(conn, in, out, r)
 }

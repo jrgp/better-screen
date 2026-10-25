@@ -52,6 +52,9 @@ Shells use `$SHELL` (otherwise `/bin/sh`), start in HOME, and receive
 `TERM=xterm-256color`, `COLORTERM=truecolor` and `BS_SESSION`.
 When a window's shell or its exec-replacement exits, the window is removed.
 Closing the last window ends its session and disconnects its clients.
+When no sessions remain, the daemon exits and removes its socket.
+Creating a new session automatically starts it again; `bs -ls` does not
+start a daemon just to report an empty session list.
 
 ## Keys
 
