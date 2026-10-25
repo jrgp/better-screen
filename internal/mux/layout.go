@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/jrgp/bs/internal/vt"
 )
@@ -230,15 +229,14 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 			continue
 		}
 		for y, line := range part.Lines {
-			segment := fmt.Sprintf("\x1b[%dG\x1b[0m%s%s\x1b[0m%s", r.x+1, part.Style, line, part.Style)
-			if padding := cols - ansi.StringWidth(line); padding > 0 {
-				if strings.HasPrefix(part.Style, "\x1b[7m") {
-					segment += strings.Repeat(" ", padding)
-				} else {
-					segment += fmt.Sprintf("\x1b[%dX", padding)
-				}
+			// Ghostty may position text with CUF, so string width cannot locate its end.
+			segment := fmt.Sprintf("\x1b[%dG\x1b[0m%s", r.x+1, part.Style)
+			if strings.HasPrefix(part.Style, "\x1b[7m") {
+				segment += strings.Repeat(" ", cols) + fmt.Sprintf("\x1b[%dG", r.x+1)
+			} else {
+				segment += fmt.Sprintf("\x1b[%dX", cols)
 			}
-			f.Lines[r.y+y] += segment + "\x1b[0m"
+			f.Lines[r.y+y] += segment + line + "\x1b[0m"
 		}
 	}
 	for y, row := range w.borders {

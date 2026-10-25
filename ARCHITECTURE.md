@@ -127,6 +127,13 @@ mutating the outer terminal's palette. Reverse-video effects stay inside
 their pane. Normal output repaints changed rows,
 not the whole screen. Vim, less and htop are exercised by real-process tests.
 
+Ghostty defaults to Unicode grapheme widths (DEC mode 2027), so skin tones,
+joined emoji, flags and combining marks occupy the correct cells. Snapshots
+carry each pane's width mode, including in scrollback; client UI uses Unicode
+widths, and detaching restores the physical terminal's previous mode. The local
+terminal must support these widths and have fonts for the requested glyphs;
+bs cannot supply fonts or fix a terminal that ignores mode 2027.
+
 Scrollback uses Ghostty's own history and stays anchored as live output arrives.
 If an anchored row is evicted, the client advances to the oldest retained row.
 Text selection and clipboard copying are not implemented.

@@ -81,10 +81,10 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 		return err
 	}
 	defer term.Restore(int(in.Fd()), state)
-	if _, err := io.WriteString(out, "\x1b[?1049h"); err != nil {
+	if _, err := io.WriteString(out, "\x1b[?2027s\x1b[?1049h"); err != nil {
 		return err
 	}
-	defer io.WriteString(out, "\x1b[0m\x1b[?1l\x1b>\x1b[?5l\x1b[?7h\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h\x1b[0 q\x1b[?1049l")
+	defer io.WriteString(out, "\x1b[0m\x1b[?1l\x1b>\x1b[?5l\x1b[?7h\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h\x1b[0 q\x1b[?1049l\x1b[?2027r")
 	reader, err := cancelreader.NewReader(in)
 	if err != nil {
 		return err

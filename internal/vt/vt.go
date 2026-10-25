@@ -23,6 +23,7 @@ type Frame struct {
 }
 
 func New(cols, rows int, options ...ghostty.TerminalOption) (*ghostty.Terminal, error) {
+	options = append([]ghostty.TerminalOption{ghostty.WithModeDefault(ghostty.NewMode(2027, false), true)}, options...)
 	options = append(options,
 		ghostty.WithSize(uint16(cols), uint16(rows)),
 		ghostty.WithMaxScrollbackBytes(8<<20),
@@ -73,6 +74,14 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 	}
 	if reverse {
 		f.Style = "\x1b[7m"
+	}
+	graphemes, err := t.Mode(ghostty.NewMode(2027, false))
+	if err != nil {
+		return Frame{}, err
+	}
+	widthMode := "\x1b[?2027l"
+	if graphemes {
+		widthMode = "\x1b[?2027h"
 	}
 	palette, err := t.ColorPalette()
 	if err != nil {
@@ -144,7 +153,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 			return Frame{}, err
 		}
 		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-		f.Lines[y] = resolveColors(line, overrides, defaults, reverse)
+		f.Lines[y] = widthMode + resolveColors(line, overrides, defaults, reverse)
 	}
 	x, err := t.CursorX()
 	if err != nil {
@@ -205,7 +214,7 @@ func Draw(previous *Frame, f Frame) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\x1b[?25l\x1b[?7l\x1b[0m")
+	b.WriteString("\x1b[?25l\x1b[?7l\x1b[?2027h\x1b[0m")
 	if previous == nil {
 		b.WriteString("\x1b[?6l\x1b[?69l\x1b[r\x1b[2J")
 	}

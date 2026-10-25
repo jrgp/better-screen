@@ -130,7 +130,7 @@ func (h *harness) client(cols, rows int, args ...string) *terminalClient {
 	h.t.Helper()
 	cmd := exec.Command(h.bin, args...)
 	cmd.Env = h.env()
-	screen, err := vt.New(cols, rows)
+	screen, err := vt.New(cols, rows, ghostty.WithModeDefault(ghostty.NewMode(2027, false), false))
 	require.NoError(h.t, err)
 	pt, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	require.NoError(h.t, err)
@@ -442,4 +442,5 @@ func TestE2E(t *testing.T) {
 	runPaneLifecycle(t, bin)
 	runPaneApplications(t, bin)
 	runPaneRendering(t, bin)
+	runUnicode(t, bin)
 }
