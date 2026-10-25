@@ -2,7 +2,7 @@ export PKG_CONFIG_PATH := $(CURDIR)/.deps/ghostty-install/share/pkgconfig:$(PKG_
 
 .PHONY: build deps test test-e2e clean
 build: deps
-	go build -o bs ./cmd/bs
+	go build -tags netgo,osusergo -trimpath -o bs ./cmd/bs
 
 deps:
 	sh scripts/ghostty.sh
@@ -14,4 +14,4 @@ test-e2e: deps
 	go test -count=1 -v ./e2e
 
 clean:
-	rm -f bs ghostty-poc
+	rm -f bs ghostty-poc dist/bs-linux-amd64 dist/bs-linux-arm64 dist/bs-darwin-amd64 dist/bs-darwin-arm64

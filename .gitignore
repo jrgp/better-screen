@@ -2,3 +2,4 @@
 /bs
 /ghostty-poc
 *.test
+/dist/
