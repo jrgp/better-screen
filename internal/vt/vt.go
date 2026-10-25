@@ -18,12 +18,30 @@ type Frame struct {
 	Keypad      bool
 }
 
-func New(cols, rows int) (*ghostty.Terminal, error) {
-	return ghostty.NewTerminal(
+func New(cols, rows int, options ...ghostty.TerminalOption) (*ghostty.Terminal, error) {
+	options = append(options,
 		ghostty.WithSize(uint16(cols), uint16(rows)),
 		ghostty.WithMaxScrollbackBytes(8<<20),
 		ghostty.WithMaxScrollbackLines(10000),
+		ghostty.WithKittyClipboardWriteMaxBytes(4096),
 	)
+	t, err := ghostty.NewTerminal(options...)
+	if err != nil {
+		return nil, err
+	}
+	limit := uint64(0)
+	for _, err := range []error{
+		t.SetKittyImageStorageLimit(&limit),
+		t.SetKittyImageMediumFile(false),
+		t.SetKittyImageMediumSharedMem(false),
+		t.SetKittyImageMediumTempFile(nil),
+	} {
+		if err != nil {
+			t.Close()
+			return nil, err
+		}
+	}
+	return t, nil
 }
 
 // Capture uses Ghostty's VT formatter for colors, attributes and graphemes.
