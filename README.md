@@ -322,6 +322,9 @@ To retry an existing tag without deleting or moving it:
 gh workflow run release.yml --ref master -f tag=v0.2.0
 ```
 
+Omit `-f tag=...` to validate the selected ref on both platforms without
+publishing a release or creating a tag.
+
 Local verification covers Linux builds, linking, version injection and E2E
 tests, plus workflow syntax with actionlint. Hosted Actions execution, macOS
 runtime tests, and actual release uploads have **not yet been verified** here:

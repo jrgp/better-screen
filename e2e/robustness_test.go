@@ -91,7 +91,7 @@ func runRobustness(t *testing.T, bin string) {
 	})
 
 	t.Run("terminal-restoration-and-literal-control-a", func(t *testing.T) {
-		h := newHarness(t, bin)
+		h := newHarness(t, bin, "/bin/bash")
 		c := h.client(80, 24, "-S", "input")
 		c.await("bs$ ")
 		c.write("printf 'literal-%s\\n' ok")

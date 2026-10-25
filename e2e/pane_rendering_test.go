@@ -18,8 +18,12 @@ func runPaneRendering(t *testing.T, bin string) {
 		require.NoError(t, syscall.Mkfifo(gate, 0600))
 		a := h.client(100, 20, "-S", "history-panes")
 		a.await("bs$ ")
-		a.command("printf 'background-%s\\n' ready; read answer < background-exit; exit", "background-ready")
+		// Resize before opening the FIFO: SIGWINCH can interrupt open on macOS.
 		a.write("\x01|")
+		a.command("printf 'right-%s\\n' ready", "right-ready")
+		a.write("\x01\t")
+		a.command("printf 'background-%s\\n' ready; read answer < background-exit; exit", "background-ready")
+		a.write("\x01\t")
 		a.command("TOKEN=right; i=0; while [ \"$i\" -lt 60 ]; do printf 'history-%03d\\n' \"$i\"; i=$((i+1)); done", "history-059")
 		b := h.client(100, 20, "-x", "history-panes")
 		b.await("history-059")

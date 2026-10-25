@@ -41,6 +41,7 @@ func newConfiguredHarness(t *testing.T, bin, config string, shell ...string) *ha
 	// Keep Unix socket paths below the macOS 104-byte limit.
 	home, err := os.MkdirTemp("", "bs-e2e-")
 	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".bashrc"), []byte("PS1='bs$ '\nPS2='> '\nset -o emacs\n"), 0600))
 	if config != "" {
 		require.NoError(t, os.Mkdir(filepath.Join(home, ".bs"), 0700))
 		require.NoError(t, os.WriteFile(filepath.Join(home, ".bs", "config.json"), []byte(config), 0600))
@@ -70,7 +71,7 @@ func newConfiguredHarness(t *testing.T, bin, config string, shell ...string) *ha
 }
 
 func (h *harness) env() []string {
-	return append(os.Environ(), "HOME="+h.home, "SHELL=/bin/sh", "ENV=/dev/null", "BASH_ENV=/dev/null", "HISTFILE=/dev/null", "PS1=bs$ ", "PS2=> ", "TERM=xterm-256color", "LC_ALL=C.UTF-8")
+	return append(os.Environ(), "HOME="+h.home, "SHELL=/bin/sh", "ENV=/dev/null", "BASH_ENV=/dev/null", "INPUTRC=/dev/null", "HISTFILE=/dev/null", "PS1=bs$ ", "PS2=> ", "TERM=xterm-256color", "LC_ALL=C.UTF-8")
 }
 
 func (h *harness) cli(args ...string) string {

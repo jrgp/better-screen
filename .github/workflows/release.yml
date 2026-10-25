@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing v* tag to build and publish
-        required: true
+        description: Existing v* tag to publish (leave empty to validate without publishing)
+        required: false
         type: string
 
 permissions:
@@ -19,7 +19,7 @@ concurrency:
 
 env:
   CGO_ENABLED: '1'
-  RELEASE_VERSION: ${{ inputs.tag || github.ref_name }}
+  RELEASE_VERSION: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'dev' }}
   # Keep test socket paths below macOS's Unix socket path limit.
   TMPDIR: /tmp
 
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.RELEASE_VERSION }}
+          ref: ${{ (inputs.tag || github.ref_type == 'tag') && format('refs/tags/{0}', env.RELEASE_VERSION) || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -55,6 +55,10 @@ jobs:
         with:
           version: '0.17.0'
           use-cache: false
+      - name: Keep Zig build caches outside the source checkout
+        run: |
+          echo "ZIG_GLOBAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
+          echo "ZIG_LOCAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
       - name: Install native test prerequisites
         run: |
           if [[ "$RUNNER_OS" == Linux ]]; then
@@ -67,9 +71,11 @@ jobs:
           infocmp xterm-256color >/dev/null
       - name: Build the tagged commit
         run: |
-          [[ "$RELEASE_VERSION" == v* ]]
-          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_VERSION^{commit}")"
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          if [[ "$RELEASE_VERSION" != dev ]]; then
+            [[ "$RELEASE_VERSION" == v* ]]
+            test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_VERSION^{commit}")"
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push || "$RELEASE_VERSION" == dev ]]; then
             test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
           fi
           test "$(go env GOOS)-$(go env GOARCH)" = "$PLATFORM"
@@ -131,6 +137,7 @@ jobs:
 
   publish:
     name: Publish both executables
+    if: github.ref_type == 'tag' || inputs.tag
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
