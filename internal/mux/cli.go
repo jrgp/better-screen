@@ -17,15 +17,15 @@ import (
 
 const Version = "0.1.0"
 
-func Main(args []string, in, out *os.File, stderr io.Writer) int {
-	if err := run(args, in, out, stderr); err != nil {
+func Main(args []string, in, out *os.File, stderr io.Writer, buildVersion string) int {
+	if err := run(args, in, out, stderr, buildVersion); err != nil {
 		fmt.Fprintf(stderr, "bs: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-func run(args []string, in, out *os.File, stderr io.Writer) error {
+func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string) error {
 	if len(args) == 1 && args[0] == "__daemon" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -79,7 +79,7 @@ func run(args []string, in, out *os.File, stderr io.Writer) error {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
 	}
 	if *version {
-		fmt.Fprintf(out, "bs %s\n", Version)
+		fmt.Fprintf(out, "bs %s\n", buildVersion)
 		return nil
 	}
 	multiRequested := false

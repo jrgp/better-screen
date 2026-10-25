@@ -1,8 +1,9 @@
 export PKG_CONFIG_PATH := $(CURDIR)/.deps/ghostty-install/share/pkgconfig:$(PKG_CONFIG_PATH)
+export VERSION
 
 .PHONY: build deps test test-e2e clean
 build: deps
-	go build -tags netgo,osusergo -trimpath -o bs ./cmd/bs
+	go build -tags netgo,osusergo -trimpath -ldflags "$${VERSION:+-X main.version=$$VERSION}" -o bs ./cmd/bs
 
 deps:
 	sh scripts/ghostty.sh

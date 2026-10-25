@@ -34,4 +34,4 @@ compiler="$zig cc -target $target"
 if [ "$os" = darwin ]; then compiler="$compiler -isysroot $sdk"; fi
 CGO_ENABLED=1 GOOS="$os" GOARCH="$arch" CC="$compiler" \
     PKG_CONFIG_PATH="$prefix/share/pkgconfig" \
-    go build -tags netgo,osusergo -trimpath -o "dist/bs-$os-$arch" ./cmd/bs
+    go build -tags netgo,osusergo -trimpath -ldflags "${VERSION:+-X main.version=$VERSION}" -o "dist/bs-$os-$arch" ./cmd/bs

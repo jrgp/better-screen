@@ -42,6 +42,24 @@ func runStartup(t *testing.T, bin string) {
 		require.NoError(t, err, string(out))
 		assert.Equal(t, "bs 0.1.0\n", string(out))
 	})
+	t.Run("build-time-release-version", func(t *testing.T) {
+		releaseBin := filepath.Join(t.TempDir(), "bs")
+		args := []string{"build", "-tags", "netgo,osusergo", "-trimpath", "-ldflags", "-X main.version=v0.0.0-test", "-o", releaseBin}
+		if raceEnabled {
+			args = append(args, "-race")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		build := exec.CommandContext(ctx, "go", append(args, "./cmd/bs")...)
+		build.Dir = ".."
+		out, err := build.CombinedOutput()
+		require.NoError(t, err, string(out))
+		cmd := exec.CommandContext(ctx, releaseBin, "-v")
+		cmd.Env = append(os.Environ(), "HOME=")
+		out, err = cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+		assert.Equal(t, "bs v0.0.0-test\n", string(out))
+	})
 	t.Run("automatic-daemon-and-stale-socket", func(t *testing.T) {
 		home, err := os.MkdirTemp("", "bs-auto-")
 		require.NoError(t, err)

@@ -6,4 +6,7 @@ import (
 	"github.com/jrgp/bs/internal/mux"
 )
 
-func main() { os.Exit(mux.Main(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
+// Set at link time for releases; application dependencies receive it explicitly.
+var version = mux.Version
+
+func main() { os.Exit(mux.Main(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, version)) }
