@@ -67,6 +67,13 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 	rows = min(rows, int(height))
 	offset = min(max(offset, 0), int(history))
 	f := Frame{Lines: make([]string, rows)}
+	reverse, err := t.Mode(ghostty.NewMode(5, false))
+	if err != nil {
+		return Frame{}, err
+	}
+	if reverse {
+		f.Style = "\x1b[7m"
+	}
 	palette, err := t.ColorPalette()
 	if err != nil {
 		return Frame{}, err
@@ -78,16 +85,20 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 	overrides := make(map[int]ghostty.ColorRGB)
 	if palette != nil && defaultPalette != nil {
 		for i, color := range *palette {
-			if color != defaultPalette[i] {
+			if reverse || color != defaultPalette[i] {
 				overrides[i] = color
 			}
 		}
 	}
 	defaults := make(map[string]string)
+	foreground, background := t.ColorForeground, t.ColorBackground
+	if reverse {
+		foreground, background = background, foreground
+	}
 	for _, item := range []struct {
 		code string
 		get  func() (*ghostty.ColorRGB, error)
-	}{{"39", t.ColorForeground}, {"49", t.ColorBackground}} {
+	}{{"39", foreground}, {"49", background}} {
 		color, err := item.get()
 		if err != nil {
 			return Frame{}, err
@@ -96,6 +107,9 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 			channel := "38"
 			if item.code == "49" {
 				channel = "48"
+			}
+			if reverse {
+				channel = reverseColorCode(channel)
 			}
 			value := fmt.Sprintf("%s;2;%d;%d;%d", channel, color.R, color.G, color.B)
 			defaults[item.code] = value
@@ -130,7 +144,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 			return Frame{}, err
 		}
 		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-		f.Lines[y] = resolveColors(line, overrides, defaults)
+		f.Lines[y] = resolveColors(line, overrides, defaults, reverse)
 	}
 	x, err := t.CursorX()
 	if err != nil {
@@ -171,7 +185,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 	}
 	// Only input/presentation modes belong on the physical terminal. Never emit
 	// application queries, clipboard writes, window operations, or file effects.
-	for _, mode := range []int{1, 5, 9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004} {
+	for _, mode := range []int{1, 9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004} {
 		on, err := t.Mode(ghostty.NewMode(uint16(mode), false))
 		if err != nil {
 			return Frame{}, err
@@ -239,8 +253,8 @@ func Draw(previous *Frame, f Frame) string {
 // Resolve OSC color overrides into SGR RGB, never changing the outer terminal's
 // global palette. Ghostty still does all cell/style formatting; x/ansi identifies
 // complete sequences before the formatter's known SGR color tokens are replaced.
-func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[string]string) string {
-	if len(palette) == 0 && len(defaults) == 0 {
+func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[string]string, reverse bool) string {
+	if len(palette) == 0 && len(defaults) == 0 && !reverse {
 		return line
 	}
 	var out strings.Builder
@@ -254,6 +268,9 @@ func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[s
 				value := params[i]
 				if value == "0" || value == "" {
 					result = append(result, "0")
+					if reverse {
+						result = append(result, "7")
+					}
 					for _, key := range []string{"39", "49"} {
 						if s, ok := defaults[key]; ok {
 							result = append(result, s)
@@ -262,17 +279,45 @@ func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[s
 				} else if replacement, ok := defaults[value]; ok {
 					result = append(result, replacement)
 				} else if (value == "38" || value == "48" || value == "58") && i+2 < len(params) && params[i+1] == "5" {
+					if reverse {
+						value = reverseColorCode(value)
+					}
 					index, err := strconv.Atoi(params[i+2])
 					if color, ok := palette[index]; err == nil && ok {
 						result = append(result, fmt.Sprintf("%s;2;%d;%d;%d", value, color.R, color.G, color.B))
 					} else {
-						result = append(result, params[i:i+3]...)
+						result = append(result, value, params[i+1], params[i+2])
 					}
 					i += 2
 				} else if (value == "38" || value == "48" || value == "58") && i+4 < len(params) && params[i+1] == "2" {
-					result = append(result, params[i:i+5]...)
+					if reverse {
+						value = reverseColorCode(value)
+					}
+					result = append(result, value)
+					result = append(result, params[i+1:i+5]...)
 					i += 4
 				} else {
+					if reverse {
+						n, err := strconv.Atoi(value)
+						index, channel := -1, ""
+						if err == nil {
+							switch {
+							case n >= 30 && n <= 37:
+								index, channel = n-30, "48"
+							case n >= 40 && n <= 47:
+								index, channel = n-40, "38"
+							case n >= 90 && n <= 97:
+								index, channel = n-90+8, "48"
+							case n >= 100 && n <= 107:
+								index, channel = n-100+8, "38"
+							}
+						}
+						if color, ok := palette[index]; ok {
+							value = fmt.Sprintf("%s;2;%d;%d;%d", channel, color.R, color.G, color.B)
+						} else {
+							value = reverseColorCode(value)
+						}
+					}
 					result = append(result, value)
 				}
 			}
@@ -282,4 +327,25 @@ func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[s
 		}
 	}
 	return out.String()
+}
+
+// DECSCNM swaps default colors, not explicit RGB colors. Swapping SGR color
+// channels and toggling cell inverse reproduces it inside one pane, even when
+// the physical terminal's default RGB colors are unknown.
+func reverseColorCode(value string) string {
+	switch value {
+	case "7":
+		return "27"
+	case "27":
+		return "7"
+	case "38":
+		return "48"
+	case "48":
+		return "38"
+	case "39":
+		return "49"
+	case "49":
+		return "39"
+	}
+	return value
 }

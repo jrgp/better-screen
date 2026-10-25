@@ -3,6 +3,7 @@ package mux
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
@@ -231,7 +232,11 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 		for y, line := range part.Lines {
 			segment := fmt.Sprintf("\x1b[%dG\x1b[0m%s%s\x1b[0m%s", r.x+1, part.Style, line, part.Style)
 			if padding := cols - ansi.StringWidth(line); padding > 0 {
-				segment += fmt.Sprintf("\x1b[%dX", padding)
+				if strings.HasPrefix(part.Style, "\x1b[7m") {
+					segment += strings.Repeat(" ", padding)
+				} else {
+					segment += fmt.Sprintf("\x1b[%dX", padding)
+				}
 			}
 			f.Lines[r.y+y] += segment + "\x1b[0m"
 		}

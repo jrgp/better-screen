@@ -440,4 +440,5 @@ func TestE2E(t *testing.T) {
 	runSplits(t, bin)
 	runPaneLifecycle(t, bin)
 	runPaneApplications(t, bin)
+	runPaneRendering(t, bin)
 }
