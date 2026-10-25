@@ -54,8 +54,10 @@ make build
 ```
 
 Race builds also compile the real subprocess command with `-race`.
-The Go race detector does not instrument native Ghostty code. Linux amd64 is
-runtime-verified; macOS runtime verification still requires a macOS host.
+The Go race detector does not instrument native Ghostty code. Linux amd64 and
+macOS arm64 are runtime-verified with full ordinary/race suites on native
+[GitHub-hosted runners](https://github.com/jrgp/better-screen/actions/runs/40218373737).
+macOS amd64 runtime verification remains outstanding.
 
 Existing daemons retain their binary and startup configuration. Finish their
 sessions before restarting to load the new binary or configuration. Layouts

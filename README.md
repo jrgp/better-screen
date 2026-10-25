@@ -29,7 +29,7 @@ Build prerequisites:
 * Go 1.26 or newer, Git, make, a C compiler and pkg-config.
 * **Zig 0.17.0**, on PATH or supplied as an absolute `ZIG` path.
 * On macOS, Apple's Command Line Tools (`xcode-select --install`).
-* Tests additionally require `sh`, `vim`, `less`, `htop`, and installed
+* Tests additionally require `sh`, `bash`, `vim`, `less`, `htop`, and installed
   `xterm-256color` terminfo.
 
 For example, on Fedora:
@@ -245,8 +245,9 @@ concurrent pane exits/kills, process identity and job cleanup, tiny terminals,
 pane-local colors and reverse video, alternate screens, and Vim/less/htop
 inside panes.
 
-Linux amd64: full uncached ordinary and race suites pass, with repeated layout
-and lifecycle stress runs. A separate real cross-UID check verified filesystem
+Linux amd64 and macOS arm64: full uncached ordinary and race suites pass on
+native GitHub-hosted runners. Linux also has repeated local layout and
+lifecycle stress runs. A separate real Linux cross-UID check verified filesystem
 denial and kernel peer-credential rejection after deliberately relaxing
 socket permissions.
 
@@ -267,12 +268,12 @@ installation for each target. macOS linking requires a licensed Apple SDK:
 on macOS the script discovers it with `xcrun`; elsewhere supply `SDKROOT`.
 No SDK or toolchain is required on the destination machine.
 
-**Verified here:** Linux amd64 runtime/E2E, and Linux arm64 cross-linking.
-The two macOS native static libraries compiled successfully, but final
-executable linking and runtime/E2E verification are **not verified** in this
-Linux environment: it has no Apple SDK, macOS system frameworks, or macOS
-runtime. Initial cross-link attempts failed on missing `libresolv` and
-`CoreFoundation`, not on Go source compilation.
+**Verified:** Linux amd64 and macOS arm64 native builds, executable/linking
+checks, and full ordinary/race E2E suites on GitHub-hosted runners; Linux amd64
+also runs locally, and Linux arm64 cross-links. The macOS amd64 native static
+library compiled, but its final executable linking and runtime/E2E tests remain
+unverified. Cross-linking macOS executables from this Linux machine still
+requires an Apple SDK; hosted macOS builds use the runner's native SDK.
 
 `make clean` removes local executables; downloaded toolchains and native
 build caches remain in ignored `.deps/`.
@@ -290,7 +291,7 @@ pinned to commit SHAs; no additional secrets, services, or release framework
 are required.
 
 Both platforms run the complete Go suite, including real-process PTY E2E tests,
-and the race suite. Each binary must execute, report the exact tag, contain
+and the race suite. Release binaries must execute, report the exact tag, contain
 defined Ghostty symbols, and have build metadata matching the tagged commit.
 `file`, `readelf`/`ldd`, and `otool -L` validate architecture and reject dynamic
 dependencies outside the allowed OS libraries.
@@ -323,13 +324,17 @@ gh workflow run release.yml --ref master -f tag=v0.2.0
 ```
 
 Omit `-f tag=...` to validate the selected ref on both platforms without
-publishing a release or creating a tag.
+publishing a release or creating a tag; these validation artifacts report `dev`.
 
-Local verification covers Linux builds, linking, version injection and E2E
-tests, plus workflow syntax with actionlint. Hosted Actions execution, macOS
-runtime tests, and actual release uploads have **not yet been verified** here:
-the development environment has no authenticated GitHub CLI, and no temporary
-release tag was authorized or published.
+[Hosted validation](https://github.com/jrgp/better-screen/actions/runs/40218373737)
+passed on both native platforms, including full ordinary/race suites, executable
+version/provenance checks, defined Ghostty symbols and OS-only dynamic libraries.
+The validation-only run intentionally did not publish a release. Workflow
+syntax and publication asset-set guards are also checked locally.
+
+The initial `v0.0.1` tag predates hosted-runner test-fixture corrections. Its
+release attempt failed tests and did not publish; use a new tag containing the
+fixes rather than moving the existing tag.
 
 No themes, configurable bindings/layouts, manual pane resizing, floating panes,
 mouse pane controls, plugins, TCP, recording/replay, web interface, or Windows
