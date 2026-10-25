@@ -304,15 +304,21 @@ Tags containing `-` are marked as prereleases. A failed upload leaves a draft,
 not an incomplete public release; rerun the failed job after fixing the cause.
 GitHub's automatically provided source-code archive links are not binary assets.
 
-Commit the workflow and desired code, then choose an unused version:
+Commit the desired code, then run:
 
 ```sh
-git push origin HEAD
-git tag v0.2.0
-git push origin v0.2.0
+make release
 ```
 
-The published release is named `v0.2.0`, and both executables report that version.
+This requires a clean worktree, fetches tags from `origin`, increments the patch
+number of the highest stable `vMAJOR.MINOR.PATCH` tag, pushes the current branch,
+and creates and pushes an annotated tag at HEAD. For example, `v0.0.1` becomes
+`v0.0.2`; without stable tags it starts at `v0.0.1`. Prerelease and unrelated tags
+are ignored. GitHub Actions then builds and publishes the release.
+If the tag push fails, the error prints the exact push command to retry; the
+local tag is preserved.
+
+The release and both executables use the new tag as their version.
 Do not move an existing release tag; use a new version for fixes.
 Push the workflow to the default branch before the first tag so GitHub registers
 it. Tag pushes that happened before registration are not replayed.
