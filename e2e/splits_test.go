@@ -97,13 +97,13 @@ func runSplits(t *testing.T, bin string) {
 		c := h.client(80, 16, "-S", "nested")
 		c.await("bs$ ")
 		c.write("\x01|\x01S\x01\t\x01S")
-		c.command("printf '\\033[2J\\033[Hbottom-%s\\n' left", "bottom-left")
+		c.command("TOKEN=bottom-left; printf '\\033[2J\\033[Hbottom-%s\\n' left", "bottom-left")
 		c.write("\x01\t")
-		c.command("printf '\\033[2J\\033[Htop-%s\\n' right", "top-right")
+		c.command("TOKEN=top-right; printf '\\033[2J\\033[Htop-%s\\n' right", "top-right")
 		c.write("\x01\t")
-		c.command("printf '\\033[2J\\033[Hbottom-%s\\n' right", "bottom-right")
+		c.command("TOKEN=bottom-right; printf '\\033[2J\\033[Hbottom-%s\\n' right", "bottom-right")
 		c.write("\x01\t")
-		c.command("printf '\\033[2J\\033[Htop-%s\\n' left", "top-left")
+		c.command("TOKEN=top-left; printf '\\033[2J\\033[Htop-%s\\n' left", "top-left")
 		c.border(39, 7, '┼')
 		c.border(0, 7, '─')
 		c.border(79, 7, '─')
@@ -118,6 +118,10 @@ func runSplits(t *testing.T, bin string) {
 					require.NotContains(t, text, other)
 				}
 			}
+		}
+		for _, token := range []string{"bottom-right", "top-right", "bottom-left", "top-left"} {
+			c.write("\x01\x1b[Z")
+			c.command("printf 'reverse-%s\\n' \"$TOKEN\"", "reverse-"+token)
 		}
 		c.write("\x01|")
 		c.command("printf '\\033[2J\\033[Hnested-%s\\n' fifth", "nested-fifth")

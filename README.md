@@ -2,7 +2,7 @@
 
 A small GNU Screen-style terminal multiplexer in Go, with static
 libghostty-vt terminal emulation. One automatically started, unprivileged
-daemon owns sessions, numbered windows, shells, PTYs and scrollback.
+daemon owns sessions, numbered windows, split panes, PTYs and scrollback.
 Disconnecting or losing an SSH connection leaves them running.
 
 ## Build and run
@@ -50,7 +50,8 @@ Exact names take precedence; otherwise an unambiguous name prefix is accepted.
 Session names use 1-64 ASCII letters, digits, dots, hyphens or underscores.
 Shells use `$SHELL` (otherwise `/bin/sh`), start in HOME, and receive
 `TERM=xterm-256color`, `COLORTERM=truecolor` and `BS_SESSION`.
-When a window's shell or its exec-replacement exits, the window is removed.
+When a pane's shell or its exec-replacement exits, that pane is removed.
+Closing the final pane removes its window.
 Closing the last window ends its session and disconnects its clients.
 When no sessions remain, the daemon exits and removes its socket.
 Creating a new session automatically starts it again; `bs -ls` does not
@@ -64,6 +65,11 @@ Press **Ctrl-A**, release it, then:
 |---|---|
 | `c` | Create a window |
 | `k` | Kill the current window and its jobs |
+| `K` | Kill only the focused pane and its jobs |
+| `\|` | Split the focused pane left/right |
+| `S` | Split the focused pane top/bottom |
+| `Tab` | Focus the next pane |
+| `Shift-Tab` | Focus the previous pane |
 | `n`, `p` | Next, previous window |
 | `0`-`9` | Select a numbered window |
 | `"` | Interactive window list |
@@ -77,19 +83,64 @@ Press **Ctrl-A**, release it, then:
 Menus use Up/Down and Enter; Esc cancels. `*` identifies the current session
 or window. The session menu shows names, window counts and attachment counts.
 It switches only the invoking client, without restarting any process.
-Window selection, in contrast, is shared by everyone in that session.
+Window selection, pane focus, and layouts are shared by everyone in that session.
 
-Scrollback uses Up/Down and Page Up/Page Down; Esc returns to live output.
+Scrollback of the focused pane uses Up/Down and Page Up/Page Down; Esc returns to live output.
 It is client-specific, uses Ghostty's own history, and stays anchored as live
 output arrives. If an anchored row is evicted, it advances to the oldest
 retained row. **Text selection and clipboard copying are not implemented.**
+
+## Windows and panes
+
+New windows start with one pane. Splits divide the focused pane approximately
+equally, keep its process, start a new shell, and focus the new pane. Splits
+can nest in either direction; single-cell light blue borders meet at junctions.
+Input goes only to the focused pane. Tab order is a deterministic tree traversal:
+left before right and top before bottom, wrapping at either end.
+
+Switching windows preserves each window's layout and focused pane. Exiting or
+killing a pane collapses its parent split and expands the surviving subtree;
+surviving processes are not restarted. Lowercase `k` still kills the entire
+window; uppercase `K` kills just its focused pane.
+
+If a fitted terminal becomes too small for the tree, only the focused pane
+is displayed. Hidden panes stay alive at 1x1; cycling focus still works.
+Fitting a larger terminal restores the saved layout. Splits that cannot fit
+are rejected with a visible error. There is no manual pane resizing or mouse
+pane control.
+
+## Status line and configuration
+
+By default the final physical terminal row is reserved for a status line:
+ascending window numbers on the left, and the session name on the right.
+An automatically assigned session identifier is shown for unnamed sessions,
+matching `bs -ls` and `bs -x`. Only the active number is light blue
+(RGB 135, 206, 250), matching split borders; other text uses default colors.
+Window switching never adds decorations or moves the picker. Narrow terminals
+clip the picker to leave room for the right-aligned identifier.
+
+To return that row to applications, create `~/.bs/config.json`:
+
+```json
+{
+  "status_line": false
+}
+```
+
+The only setting is `status_line`, a boolean, defaulting to `true`. Missing
+files and `{}` use the default. Invalid JSON, unknown settings, invalid types,
+and files over 64 KiB report an error. Configuration is loaded at startup,
+not hot-reloaded; existing daemons retain their startup setting.
+To change it, finish existing sessions and start a new one. Do not terminate
+a daemon whose sessions you want to keep.
 
 ## Dimensions and rendering
 
 The creating client establishes canonical dimensions. Additional attachments,
 SIGWINCH, and disconnects never automatically resize the session.
 Ctrl-A F explicitly resizes **all** its windows and their PTYs. Detached
-sessions retain their size. Smaller clients see the top-left crop, larger
+sessions retain their size. Pane PTY sizes exclude borders and the optional
+status row. Smaller clients see the top-left crop, larger
 clients get blank padding, and an off-crop cursor is hidden.
 
 Ghostty's cells are authoritative. Attach, reattach, window changes and menu
@@ -98,7 +149,8 @@ applications to redraw. The native VT formatter preserves attributes,
 ANSI/indexed/RGB colors, wide characters, and combining graphemes; a small
 presentation layer restores position, visibility, shape and input modes.
 OSC palette/default-color overrides are resolved into RGB SGR rather than
-mutating the outer terminal's palette. Normal output repaints changed rows,
+mutating the outer terminal's palette. Reverse-video effects stay inside
+their pane. Normal output repaints changed rows,
 not the whole screen. Vim, less and htop are exercised by real-process tests.
 
 ## Runtime and safety
@@ -115,8 +167,8 @@ Only that loop accesses native terminal state. Complete pending frames are
 coalesced; a blocked client cannot stall another. IPC uses standard-library
 JSON and a four-byte length prefix, with allocation bounds.
 
-Limits: 32 sessions, 32 windows/session, 128 windows total, 64 connections,
-2-500 columns, 2-200 rows, 8 MiB/10,000 lines of history per window
+Limits: 32 sessions, 32 windows/session, 32 panes/window, 128 PTYs total,
+64 connections, 2-500 columns, 2-200 rows, 8 MiB/10,000 lines of history per pane
 (Ghostty's byte limit is approximate), 64 KiB request frames, 8 MiB response
 frames and bounded PTY queues. Blocked socket writes time out after 3 seconds.
 Clipboard/file/image escape effects are not forwarded; Kitty file/shared-memory
@@ -138,8 +190,8 @@ make test-e2e
 
 # For direct Go commands:
 export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
-go test ./...
-go test -race ./...
+go test -count=1 ./...
+go test -race -count=1 ./...
 go vet ./...
 ```
 
@@ -149,6 +201,9 @@ cleanup. Ghostty also inspects **rendered physical-terminal output**: assertions
 check visible contents, attributes, RGB colors, graphemes and cursor position.
 `go test -race` also builds the actual subprocess binary with `-race`.
 The Go race detector **does not instrument native Ghostty code**.
+Use `-count=1` to avoid cached E2E results: those tests build the command as a
+subprocess, so Go's test cache does not track every daemon/client source file.
+Both Makefile test targets already disable this cache.
 
 Coverage includes all 15 requested scenarios: command execution; detach and
 authoritative reattach; multiple windows; simultaneous clients; shared input
@@ -161,9 +216,16 @@ restoration, literal Ctrl-A, malformed/versioned IPC, slow clients, unsafe
 paths, CLI errors, concurrent automatic startup, stale sockets and incremental
 physical output.
 
-Linux amd64: full ordinary and race suites pass, including five consecutive
-ordinary suite runs and 100 concurrent automatic-startup cycles. A separate real cross-UID check verified filesystem
-denial and kernel peer-credential rejection even after deliberately relaxing
+Status, split, and configuration coverage is mapped to real-binary tests in
+[the coverage matrix](docs/status-splits-coverage.md). This includes multi-digit
+picker colors, independently sized clients, nested junctions, shared focus,
+concurrent pane exits/kills, process identity and job cleanup, tiny terminals,
+pane-local colors and reverse video, alternate screens, and Vim/less/htop
+inside panes.
+
+Linux amd64: full uncached ordinary and race suites pass, with repeated layout
+and lifecycle stress runs. A separate real cross-UID check verified filesystem
+denial and kernel peer-credential rejection after deliberately relaxing
 socket permissions.
 
 ## Other build targets
@@ -197,5 +259,6 @@ See [Ghostty feasibility](docs/ghostty-feasibility.md) for the passed hard
 feasibility gate, reproducer, exact native/binding revisions and API evidence.
 No Ghostty binding extensions or upstream modifications are needed.
 
-No panes, splits, configuration language, plugins, TCP, recording/replay,
-web interface, or Windows support.
+No themes, configurable bindings/layouts, manual pane resizing, floating panes,
+mouse pane controls, plugins, TCP, recording/replay, web interface, or Windows
+support.

@@ -8,7 +8,7 @@ deps:
 	sh scripts/ghostty.sh
 
 test: deps
-	go test ./...
+	go test -count=1 ./...
 
 test-e2e: deps
 	go test -count=1 -v ./e2e
