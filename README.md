@@ -5,6 +5,23 @@ libghostty-vt terminal emulation. One automatically started, unprivileged
 daemon owns sessions, numbered windows, split panes, PTYs and scrollback.
 Disconnecting or losing an SSH connection leaves them running.
 
+## Release binaries
+
+GitHub Releases contain exactly two raw executables: `bs-linux-amd64` and
+`bs-darwin-arm64`. Go, Zig and Ghostty are not needed on the destination machine;
+only normal operating-system libraries are dynamically linked.
+
+For Linux amd64:
+
+```sh
+curl -fL https://github.com/jrgp/better-screen/releases/latest/download/bs-linux-amd64 -o bs
+chmod +x bs
+./bs -v
+```
+
+For macOS arm64, substitute `bs-darwin-arm64` in the download URL. Browser
+downloads may also need `chmod +x` before running.
+
 ## Build and run
 
 Build prerequisites:
@@ -30,10 +47,15 @@ release.
 
 `make build` fetches and builds the pinned native library into `.deps/`.
 Go dependencies are pinned in `go.mod`/`go.sum`; the matching native revision
-is pinned in `scripts/ghostty.sh`. Initial builds need Internet access.
+is pinned in `scripts/ghostty.sh`. Ghostty uses baseline CPU settings rather
+than the build host's optional instructions. Initial builds need Internet access.
 The executable embeds Ghostty statically: copying `bs` to another compatible
 machine requires **neither Ghostty nor Zig at runtime**. System libc is
 dynamically linked; this is not a fully static libc binary.
+
+To set a release version locally, use `make build VERSION=v0.2.0`;
+`./bs -v` then reports `bs v0.2.0`. Ordinary development builds retain their
+default version. `VERSION` also works with `scripts/build-target.sh`.
 
 ```sh
 ./bs                   # new session with an automatically assigned name
@@ -258,6 +280,44 @@ build caches remain in ignored `.deps/`.
 See [Ghostty feasibility](docs/ghostty-feasibility.md) for the passed hard
 feasibility gate, reproducer, exact native/binding revisions and API evidence.
 No Ghostty binding extensions or upstream modifications are needed.
+
+## Publishing a release
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on pushed
+`v*` tags. It builds natively on Ubuntu 24.04 amd64 and macOS 15 arm64 using
+Go 1.26.10, Zig 0.17.0, and the existing pinned Ghostty revision. Actions are
+pinned to commit SHAs; no additional secrets, services, or release framework
+are required.
+
+Both platforms run the complete Go suite, including real-process PTY E2E tests,
+and the race suite. Each binary must execute, report the exact tag, contain
+defined Ghostty symbols, and have build metadata matching the tagged commit.
+`file`, `readelf`/`ldd`, and `otool -L` validate architecture and reject dynamic
+dependencies outside the allowed OS libraries.
+
+Only after both jobs pass are their executables transferred to a publishing
+job. It creates a draft, uploads the two raw assets, verifies the exact asset
+set, then publishes. Failed builds or validation cannot publish a new release.
+Only the publishing job has `contents: write`; builds have read-only access.
+Tags containing `-` are marked as prereleases. A failed upload leaves a draft,
+not an incomplete public release; rerun the failed job after fixing the cause.
+GitHub's automatically provided source-code archive links are not binary assets.
+
+Commit the workflow and desired code, then choose an unused version:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The published release is named `v0.2.0`, and both executables report that version.
+Do not move an existing release tag; use a new version for fixes.
+
+Local verification covers Linux builds, linking, version injection and E2E
+tests, plus workflow syntax with actionlint. Hosted Actions execution, macOS
+runtime tests, and actual release uploads have **not yet been verified** here:
+the development environment has no authenticated GitHub CLI, and no temporary
+release tag was authorized or published.
 
 No themes, configurable bindings/layouts, manual pane resizing, floating panes,
 mouse pane controls, plugins, TCP, recording/replay, web interface, or Windows
