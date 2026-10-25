@@ -160,7 +160,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 			if finished {
 				return nil
 			}
-			if c.keys == "\x1b" {
+			if c.keys == "\x1b" || c.mode == "prefix" {
 				escapeAt = time.Now()
 			}
 			if err := c.draw(); err != nil {
@@ -213,9 +213,15 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 			return err
 		case <-tick.C:
 			changed := false
-			if c.keys == "\x1b" && time.Since(escapeAt) > 100*time.Millisecond {
-				c.mode, c.keys, c.previous = "", "", nil
-				if err := c.send(request{Op: "live"}); err != nil {
+			if (c.keys == "\x1b" || c.mode == "prefix") && time.Since(escapeAt) > 100*time.Millisecond {
+				op := "live"
+				if c.mode == "prefix" {
+					c.mode, op = "scroll", "scroll"
+				} else {
+					c.mode = ""
+				}
+				c.keys, c.previous = "", nil
+				if err := c.send(request{Op: op}); err != nil {
 					return err
 				}
 				changed = true
@@ -244,6 +250,30 @@ func (c *client) input(data []byte) (bool, error) {
 		return err
 	}
 	for _, b := range data {
+		if c.mode == "prefix" {
+			c.keys += string(b)
+			if c.keys == "\x1b[" {
+				continue
+			}
+			key := c.keys
+			c.mode, c.keys = "", ""
+			if key == "\x1b[Z" {
+				if err := c.send(request{Op: "pane-prev"}); err != nil {
+					return false, err
+				}
+			} else {
+				c.mode, c.previous = "scroll", nil
+				if err := c.send(request{Op: "scroll"}); err != nil {
+					return false, err
+				}
+				for _, b := range []byte(key[1:]) {
+					if err := c.menuKey(b); err != nil {
+						return false, err
+					}
+				}
+			}
+			continue
+		}
 		if c.mode != "" {
 			if err := flush(); err != nil {
 				return false, err
@@ -266,6 +296,14 @@ func (c *client) input(data []byte) (bool, error) {
 				op = "new"
 			case 'k':
 				op = "kill"
+			case 'K':
+				op = "pane-kill"
+			case '|':
+				op = "split-v"
+			case 'S':
+				op = "split-h"
+			case '\t':
+				op = "pane-next"
 			case 'n', 14:
 				op = "next"
 			case 'p', 16:
@@ -286,8 +324,7 @@ func (c *client) input(data []byte) (bool, error) {
 				c.choice, c.previous = 0, nil
 				op = "catalog"
 			case 27:
-				c.mode, c.previous = "scroll", nil
-				op = "scroll"
+				c.mode, c.keys = "prefix", "\x1b"
 			default:
 				if b >= '0' && b <= '9' {
 					if err := c.send(request{Op: "select", Number: int(b - '0')}); err != nil {
@@ -412,7 +449,7 @@ func (c *client) draw() error {
 				lines = append(lines, fmt.Sprintf("%s%d  %s%s", prefix, w.Number, cleanText(w.Title), current))
 			}
 		} else {
-			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/p  next/previous", "0-9  select window   \"  window list", "k  kill current window", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "a  literal Ctrl-A    ?  help"}
+			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/p  next/previous", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "a  literal Ctrl-A    ?  help"}
 		}
 		// Scroll menus within the available rows, keeping the selection visible.
 		start := max(0, c.choice-max(0, c.rows-4))

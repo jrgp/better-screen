@@ -23,8 +23,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type window struct {
-	number      int
+type pane struct {
 	term        *ghostty.Terminal
 	pty         *os.File
 	cmd         *exec.Cmd
@@ -33,6 +32,14 @@ type window struct {
 	wait        chan struct{}
 	responseErr error
 	title       string
+	bounds      rectangle
+}
+
+type window struct {
+	number  int
+	root    *layout
+	focused *pane
+	borders [][]byte
 }
 
 type session struct {
@@ -59,7 +66,7 @@ type peer struct {
 type event struct {
 	peer   *peer
 	req    *request
-	window *window
+	pane   *pane
 	data   []byte
 	exited bool
 	err    error
@@ -150,7 +157,9 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		for _, session := range s.sessions {
 			for _, w := range session.windows {
-				s.stopWindow(w)
+				for _, p := range w.root.panes() {
+					s.stopPane(p)
+				}
 			}
 		}
 	}()
@@ -193,8 +202,8 @@ func (s *Server) Run(ctx context.Context) error {
 					go s.readPeer(e.peer)
 					go s.writePeer(e.peer)
 				}
-			} else if e.window != nil {
-				s.windowEvent(e)
+			} else if e.pane != nil {
+				s.paneEvent(e)
 			} else if e.err != nil {
 				return e.err
 			}
@@ -440,13 +449,14 @@ func (s *Server) handle(p *peer, r request) {
 		}
 		session := p.session
 		w := session.windows[session.selected]
+		focused := w.focused
 		switch r.Op {
 		case "input":
 			if len(r.Data) > 32768 {
 				s.fail(p, fmt.Errorf("input exceeds 32768 bytes"))
 				return
 			}
-			if !s.queueInput(w, r.Data) {
+			if !s.queueInput(focused, r.Data) {
 				s.fail(p, fmt.Errorf("PTY input buffer full"))
 				s.drop(p)
 			}
@@ -457,7 +467,25 @@ func (s *Server) handle(p *peer, r request) {
 			}
 			s.resetViews(session)
 		case "kill":
-			s.windowEvent(event{window: w, exited: true})
+			s.removeWindow(session, session.selected)
+		case "pane-kill":
+			s.paneEvent(event{pane: focused, exited: true})
+		case "split-v", "split-h":
+			if err := s.split(session, w, r.Op == "split-v"); err != nil {
+				s.fail(p, err)
+			}
+		case "pane-next", "pane-prev":
+			panes := w.root.panes()
+			i := slices.Index(panes, focused)
+			step := 1
+			if r.Op == "pane-prev" {
+				step = -1
+			}
+			w.focused = panes[(i+len(panes)+step)%len(panes)]
+			s.resetViews(session)
+			if err := s.resizeWindow(session, w); err != nil {
+				s.fail(p, err)
+			}
 		case "next", "prev", "select":
 			switch r.Op {
 			case "next":
@@ -479,24 +507,20 @@ func (s *Server) handle(p *peer, r request) {
 				return
 			}
 			p.cols, p.rows = r.Cols, r.Rows
+			session.cols, session.rows = p.cols, p.rows
+			s.resetViews(session)
 			for _, win := range session.windows {
-				if err := pty.Setsize(win.pty, &pty.Winsize{Cols: uint16(p.cols), Rows: uint16(s.contentRows(p.rows))}); err != nil {
-					s.fail(p, err)
-					return
-				}
-				if err := win.term.Resize(uint16(p.cols), uint16(s.contentRows(p.rows)), 0, 0); err != nil {
+				if err := s.resizeWindow(session, win); err != nil {
 					s.fail(p, err)
 					return
 				}
 			}
-			session.cols, session.rows = p.cols, p.rows
-			s.resetViews(session)
 		case "scroll":
-			if err := p.resolveScroll(w.term); err != nil {
+			if err := p.resolveScroll(focused.term); err != nil {
 				s.fail(p, err)
 				return
 			}
-			history, err := w.term.ScrollbackRows()
+			history, err := focused.term.ScrollbackRows()
 			if err != nil {
 				s.fail(p, err)
 				return
@@ -505,7 +529,7 @@ func (s *Server) handle(p *peer, r request) {
 			p.clearScroll()
 			p.offset = offset
 			if offset > 0 {
-				p.anchor, err = w.term.TrackGridRef(ghostty.Point{Tag: ghostty.PointTagScreen, Y: uint32(int(history) - offset)})
+				p.anchor, err = focused.term.TrackGridRef(ghostty.Point{Tag: ghostty.PointTagScreen, Y: uint32(int(history) - offset)})
 				if err != nil {
 					s.fail(p, err)
 					return
@@ -567,7 +591,7 @@ func (p *peer) resolveScroll(t *ghostty.Terminal) error {
 func (s *Server) windowInfos(session *session) []windowInfo {
 	result := make([]windowInfo, 0, len(session.windows))
 	for _, w := range session.windows {
-		result = append(result, windowInfo{Number: w.number, Title: w.title})
+		result = append(result, windowInfo{Number: w.number, Title: w.focused.title})
 	}
 	slices.SortFunc(result, func(a, b windowInfo) int { return a.Number - b.Number })
 	return result
@@ -611,33 +635,55 @@ func (s *Server) newWindow(session *session) error {
 	for slices.ContainsFunc(session.windows, func(w *window) bool { return w.number == number }) {
 		number++
 	}
-	w := &window{number: number, input: make(chan []byte, 64), done: make(chan struct{}), wait: make(chan struct{}), title: filepath.Base(s.shell)}
-	term, err := vt.New(session.cols, s.contentRows(session.rows), ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
+	p, err := s.newPane(session, session.cols, s.contentRows(session.rows))
+	if err != nil {
+		return err
+	}
+	w := &window{number: number, root: &layout{pane: p}, focused: p}
+	if err := s.resizeWindow(session, w); err != nil {
+		s.stopPane(p)
+		return err
+	}
+	session.windows = append(session.windows, w)
+	session.selected = len(session.windows) - 1
+	session.dirty = true
+	return nil
+}
+
+func (s *Server) newPane(session *session, cols, rows int) (*pane, error) {
+	total := 0
+	for _, session := range s.sessions {
+		for _, w := range session.windows {
+			total += len(w.root.panes())
+		}
+	}
+	if total >= maxTotalPanes {
+		return nil, fmt.Errorf("pane limit reached")
+	}
+	w := &pane{input: make(chan []byte, 64), done: make(chan struct{}), wait: make(chan struct{}), title: filepath.Base(s.shell)}
+	term, err := vt.New(cols, rows, ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
 		if !s.queueInput(w, append([]byte(nil), data...)) {
 			w.responseErr = fmt.Errorf("terminal response buffer full")
 		}
 	}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	w.term = term
 	cmd := exec.Command(s.shell)
 	cmd.Dir = s.home
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "BS_SESSION="+session.name)
 	w.cmd = cmd
-	w.pty, err = pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(session.cols), Rows: uint16(s.contentRows(session.rows))})
+	w.pty, err = pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
 		term.Close()
-		return err
+		return nil, err
 	}
-	session.windows = append(session.windows, w)
-	session.selected = len(session.windows) - 1
-	session.dirty = true
 	go func() {
 		buffer := make([]byte, 32768)
 		for {
 			n, err := w.pty.Read(buffer)
-			if n > 0 && !s.publish(event{window: w, data: append([]byte(nil), buffer[:n]...)}) {
+			if n > 0 && !s.publish(event{pane: w, data: append([]byte(nil), buffer[:n]...)}) {
 				return
 			}
 			if err != nil {
@@ -650,7 +696,7 @@ func (s *Server) newWindow(session *session) error {
 			select {
 			case data := <-w.input:
 				if _, err := w.pty.Write(data); err != nil {
-					s.publish(event{window: w, exited: true, err: err})
+					s.publish(event{pane: w, exited: true, err: err})
 					return
 				}
 			case <-w.done:
@@ -661,12 +707,12 @@ func (s *Server) newWindow(session *session) error {
 	go func() {
 		err := cmd.Wait()
 		close(w.wait)
-		s.publish(event{window: w, exited: true, err: err})
+		s.publish(event{pane: w, exited: true, err: err})
 	}()
-	return nil
+	return w, nil
 }
 
-func (s *Server) queueInput(w *window, data []byte) bool {
+func (s *Server) queueInput(w *pane, data []byte) bool {
 	select {
 	case w.input <- data:
 		return true
@@ -675,7 +721,7 @@ func (s *Server) queueInput(w *window, data []byte) bool {
 	}
 }
 
-func (s *Server) stopWindow(w *window) {
+func (s *Server) stopPane(w *pane) {
 	close(w.done)
 	// A PTY's jobs share its Unix session, not necessarily its process group.
 	// Enumerate through gopsutil instead of maintaining a platform-specific
@@ -723,49 +769,53 @@ func (s *Server) stopWindow(w *window) {
 	w.term.Close()
 }
 
-func (s *Server) windowEvent(e event) {
-	for si, session := range s.sessions {
-		wi := slices.Index(session.windows, e.window)
-		if wi < 0 {
-			continue
-		}
-		if e.exited {
-			if e.err != nil {
-				s.log.Printf("session %s window %d: %v", session.name, e.window.number, e.err)
+func (s *Server) paneEvent(e event) {
+	for _, session := range s.sessions {
+		for wi, w := range session.windows {
+			panes := w.root.panes()
+			pi := slices.Index(panes, e.pane)
+			if pi < 0 {
+				continue
 			}
-			s.resetViews(session)
-			s.stopWindow(e.window)
-			session.windows = slices.Delete(session.windows, wi, wi+1)
-			if len(session.windows) == 0 {
-				for p := range s.peers {
-					if p.session == session {
-						s.reply(p, response{Done: true})
-						p.session = nil
+			if e.exited {
+				if e.err != nil {
+					s.log.Printf("session %s window %d pane %d: %v", session.name, w.number, pi, e.err)
+				}
+				if len(panes) == 1 {
+					s.removeWindow(session, wi)
+				} else {
+					s.resetViews(session)
+					s.stopPane(e.pane)
+					w.root = w.root.remove(e.pane)
+					if w.focused == e.pane {
+						remaining := w.root.panes()
+						w.focused = remaining[min(pi, len(remaining)-1)]
+					}
+					if err := s.resizeWindow(session, w); err != nil {
+						s.log.Printf("reflowing panes: %v", err)
+						for p := range s.peers {
+							if p.session == session {
+								s.fail(p, err)
+							}
+						}
 					}
 				}
-				s.sessions = slices.Delete(s.sessions, si, si+1)
 			} else {
-				if wi < session.selected {
-					session.selected--
+				e.pane.term.VTWrite(e.data)
+				if e.pane.responseErr != nil {
+					s.paneEvent(event{pane: e.pane, exited: true, err: e.pane.responseErr})
+					return
 				}
-				session.selected = min(session.selected, len(session.windows)-1)
-				s.resetViews(session)
+				title, err := e.pane.term.Title()
+				if err != nil {
+					s.log.Print(err)
+				} else if title != "" {
+					e.pane.title = title
+				}
+				session.dirty = true
 			}
-		} else {
-			e.window.term.VTWrite(e.data)
-			if e.window.responseErr != nil {
-				s.windowEvent(event{window: e.window, exited: true, err: e.window.responseErr})
-				return
-			}
-			title, err := e.window.term.Title()
-			if err != nil {
-				s.log.Print(err)
-			} else if title != "" {
-				e.window.title = title
-			}
-			session.dirty = true
+			return
 		}
-		return
 	}
 }
 
@@ -776,18 +826,10 @@ func (s *Server) render() {
 		}
 		session := p.session
 		w := session.windows[session.selected]
-		if err := p.resolveScroll(w.term); err != nil {
-			s.fail(p, err)
-			continue
-		}
-		frame, err := vt.Capture(w.term, p.cols, s.contentRows(p.rows), p.offset)
+		frame, err := s.capture(p)
 		if err != nil {
 			s.fail(p, err)
 			continue
-		}
-		frame.Lines = append(frame.Lines, make([]string, p.rows-len(frame.Lines))...)
-		if s.config.StatusLine {
-			frame.Lines[p.rows-1] = s.statusLine(session, p.cols)
 		}
 		s.reply(p, response{Frame: &frame, Session: session.name, Window: w.number, Windows: s.windowInfos(session)})
 		p.force = false

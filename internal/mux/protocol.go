@@ -18,6 +18,8 @@ const (
 	maxSessions     = 32
 	maxWindows      = 32
 	maxTotalWindows = 128
+	maxPanes        = 32
+	maxTotalPanes   = 128
 )
 
 type request struct {

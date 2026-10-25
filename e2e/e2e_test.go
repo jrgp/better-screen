@@ -437,4 +437,5 @@ func TestE2E(t *testing.T) {
 	runStartup(t, bin)
 	runWindowLifecycle(t, bin)
 	runStatus(t, bin)
+	runSplits(t, bin)
 }
