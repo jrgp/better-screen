@@ -1,0 +1,110 @@
+package mux
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+const Version = "0.1.0"
+
+func Main(args []string, in, out *os.File, stderr io.Writer) int {
+	if err := run(args, in, out, stderr); err != nil {
+		fmt.Fprintf(stderr, "bs: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func run(args []string, in, out *os.File, stderr io.Writer) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	if len(args) == 1 && args[0] == "__daemon" {
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		signal.Ignore(syscall.SIGHUP)
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		return NewServer(home, shell, log.New(stderr, "bs daemon: ", log.LstdFlags)).Run(ctx)
+	}
+	flags := flag.NewFlagSet("bs", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	name := flags.String("S", "", "create a named session")
+	reattach := flags.String("r", "", "reattach to a session")
+	multi := flags.String("x", "", "attach without disconnecting other clients")
+	detach := flags.Bool("d", false, "detach existing clients (with -r)")
+	list := flags.Bool("ls", false, "list sessions")
+	version := flags.Bool("v", false, "print version")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if flags.NArg() > 0 {
+		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+	}
+	if *version {
+		fmt.Fprintf(out, "bs %s\n", Version)
+		return nil
+	}
+	selected := 0
+	for _, active := range []bool{*name != "", *reattach != "", *multi != "", *list} {
+		if active {
+			selected++
+		}
+	}
+	if selected > 1 || (*detach && *reattach == "") {
+		return fmt.Errorf("use bs [-S name | -ls | -r name | -x name | -d -r name]")
+	}
+	conn, err := connect(home, true)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach}
+	if *list {
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		r.Op = "list"
+		if err := send(conn, r); err != nil {
+			return err
+		}
+		var result response
+		if err := receive(conn, &result, maxMessage); err != nil {
+			return err
+		}
+		if result.Error != "" {
+			return errors.New(result.Error)
+		}
+		if len(result.Sessions) == 0 {
+			fmt.Fprintln(out, "No sessions.")
+			return nil
+		}
+		for _, info := range result.Sessions {
+			state := "detached"
+			if info.Attached > 0 {
+				state = fmt.Sprintf("%d attached", info.Attached)
+			}
+			fmt.Fprintf(out, "%s\t%d windows\t%s\n", info.Name, info.Windows, state)
+		}
+		return nil
+	}
+	if *reattach != "" {
+		r.Op, r.Name = "attach", *reattach
+	}
+	if *multi != "" {
+		r.Op, r.Name, r.Multi = "attach", *multi, true
+	}
+	return attach(conn, in, out, r)
+}
