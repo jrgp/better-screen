@@ -44,10 +44,14 @@ type session struct {
 type peer struct {
 	conn       *net.UnixConn
 	out        chan response
+	frames     chan response
+	done       chan struct{}
 	session    *session
 	cols, rows int
 	offset     int
 	force      bool
+	anchor     *ghostty.TrackedGridRef
+	closing    bool
 }
 
 type event struct {
@@ -117,7 +121,11 @@ func (s *Server) Run(ctx context.Context) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// Publish a 0600 socket from its first instant of existence. Restore the
+	// inherited mask before starting workers or child processes.
+	mask := unix.Umask(0077)
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	unix.Umask(mask)
 	if err != nil {
 		return err
 	}
@@ -139,7 +147,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer func() {
 		close(s.done)
 		for p := range s.peers {
-			p.conn.Close()
+			s.drop(p)
 		}
 		for _, session := range s.sessions {
 			for _, w := range session.windows {
@@ -159,7 +167,10 @@ func (s *Server) Run(ctx context.Context) error {
 				conn.Close()
 				continue
 			}
-			s.publish(event{peer: &peer{conn: conn, out: make(chan response, 1)}})
+			if !s.publish(event{peer: &peer{conn: conn, out: make(chan response, 8), frames: make(chan response, 1), done: make(chan struct{})}}) {
+				conn.Close()
+				return
+			}
 		}
 	}()
 	tick := time.NewTicker(33 * time.Millisecond)
@@ -171,7 +182,7 @@ func (s *Server) Run(ctx context.Context) error {
 		case e := <-s.events:
 			if e.peer != nil {
 				if e.req != nil {
-					if s.peers[e.peer] {
+					if s.peers[e.peer] && !e.peer.closing {
 						s.handle(e.peer, *e.req)
 					}
 				} else if e.err != nil {
@@ -212,19 +223,27 @@ func (s *Server) readPeer(p *peer) {
 
 func (s *Server) writePeer(p *peer) {
 	for {
+		var r response
 		select {
-		case r := <-p.out:
-			p.conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
-			err := send(p.conn, r)
-			if err != nil || r.Done {
-				p.conn.Close()
-				if err == nil {
-					err = io.EOF
-				}
-				s.publish(event{peer: p, err: err})
+		case r = <-p.out:
+		default:
+			select {
+			case r = <-p.out:
+			case r = <-p.frames:
+			case <-p.done:
+				return
+			case <-s.done:
 				return
 			}
-		case <-s.done:
+		}
+		p.conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+		err := send(p.conn, r)
+		if err != nil || r.Done {
+			p.conn.Close()
+			if err == nil {
+				err = io.EOF
+			}
+			s.publish(event{peer: p, err: err})
 			return
 		}
 	}
@@ -232,6 +251,28 @@ func (s *Server) writePeer(p *peer) {
 
 func (s *Server) reply(p *peer, r response) {
 	r.Version = protocolVersion
+	if r.Done {
+		p.closing = true
+		p.clearScroll()
+		p.session = nil
+	}
+	if r.Frame != nil {
+		// Frames are complete snapshots, so a pending one may be replaced.
+		select {
+		case p.frames <- r:
+			return
+		default:
+		}
+		select {
+		case <-p.frames:
+		default:
+		}
+		select {
+		case p.frames <- r:
+		default:
+		}
+		return
+	}
 	select {
 	case p.out <- r:
 	default:
@@ -241,6 +282,10 @@ func (s *Server) reply(p *peer, r response) {
 }
 
 func (s *Server) drop(p *peer) {
+	if s.peers[p] {
+		close(p.done)
+		p.clearScroll()
+	}
 	delete(s.peers, p)
 	p.conn.Close()
 }
@@ -375,7 +420,8 @@ func (s *Server) handle(p *peer, r request) {
 				}
 			}
 		}
-		p.session, p.cols, p.rows, p.offset, p.force = target, r.Cols, r.Rows, 0, true
+		p.clearScroll()
+		p.session, p.cols, p.rows, p.force = target, r.Cols, r.Rows, true
 	case "detach":
 		s.reply(p, response{Done: true})
 	case "size":
@@ -436,15 +482,29 @@ func (s *Server) handle(p *peer, r request) {
 			session.cols, session.rows = p.cols, p.rows
 			s.resetViews(session)
 		case "scroll":
+			if err := p.resolveScroll(w.term); err != nil {
+				s.fail(p, err)
+				return
+			}
 			history, err := w.term.ScrollbackRows()
 			if err != nil {
 				s.fail(p, err)
 				return
 			}
-			p.offset = min(max(p.offset+r.Number, 0), int(history))
+			offset := min(max(p.offset+r.Number, 0), int(history))
+			p.clearScroll()
+			p.offset = offset
+			if offset > 0 {
+				p.anchor, err = w.term.TrackGridRef(ghostty.Point{Tag: ghostty.PointTagScreen, Y: uint32(int(history) - offset)})
+				if err != nil {
+					s.fail(p, err)
+					return
+				}
+			}
 			p.force = true
 		case "live":
-			p.offset, p.force = 0, true
+			p.clearScroll()
+			p.force = true
 		default:
 			s.fail(p, fmt.Errorf("unknown operation %q", r.Op))
 		}
@@ -455,9 +515,43 @@ func (s *Server) resetViews(session *session) {
 	session.dirty = true
 	for p := range s.peers {
 		if p.session == session {
-			p.offset, p.force = 0, true
+			p.clearScroll()
+			p.force = true
 		}
 	}
+}
+
+func (p *peer) clearScroll() {
+	if p.anchor != nil {
+		p.anchor.Close()
+		p.anchor = nil
+	}
+	p.offset = 0
+}
+
+func (p *peer) resolveScroll(t *ghostty.Terminal) error {
+	if p.anchor == nil {
+		return nil
+	}
+	history, err := t.ScrollbackRows()
+	if err != nil {
+		return err
+	}
+	if !p.anchor.HasValue() {
+		// The old top row was evicted. Continue at the oldest retained row.
+		p.offset = int(history)
+		if history == 0 {
+			p.clearScroll()
+			return nil
+		}
+		return p.anchor.Set(t, ghostty.Point{Tag: ghostty.PointTagScreen})
+	}
+	point, err := p.anchor.Point(ghostty.PointTagScreen)
+	if err != nil {
+		return err
+	}
+	p.offset = max(0, int(history)-int(point.Y))
+	return nil
 }
 
 func (s *Server) windowInfos(session *session) []windowInfo {
@@ -567,6 +661,7 @@ func (s *Server) windowEvent(e event) {
 			if e.err != nil {
 				s.log.Printf("session %s window %d: %v", session.name, e.window.number, e.err)
 			}
+			s.resetViews(session)
 			s.stopWindow(e.window)
 			session.windows = slices.Delete(session.windows, wi, wi+1)
 			if len(session.windows) == 0 {
@@ -578,15 +673,13 @@ func (s *Server) windowEvent(e event) {
 				}
 				s.sessions = slices.Delete(s.sessions, si, si+1)
 			} else {
+				if wi < session.selected {
+					session.selected--
+				}
 				session.selected = min(session.selected, len(session.windows)-1)
 				s.resetViews(session)
 			}
 		} else {
-			before, err := e.window.term.ScrollbackRows()
-			if err != nil {
-				s.log.Print(err)
-				return
-			}
 			e.window.term.VTWrite(e.data)
 			if e.window.responseErr != nil {
 				s.windowEvent(event{window: e.window, exited: true, err: e.window.responseErr})
@@ -597,16 +690,6 @@ func (s *Server) windowEvent(e event) {
 				s.log.Print(err)
 			} else if title != "" {
 				e.window.title = title
-			}
-			after, err := e.window.term.ScrollbackRows()
-			if err != nil {
-				s.log.Print(err)
-				return
-			}
-			for p := range s.peers {
-				if p.session == session && p.offset > 0 {
-					p.offset += max(0, int(after)-int(before))
-				}
 			}
 			session.dirty = true
 		}
@@ -621,6 +704,10 @@ func (s *Server) render() {
 		}
 		session := p.session
 		w := session.windows[session.selected]
+		if err := p.resolveScroll(w.term); err != nil {
+			s.fail(p, err)
+			continue
+		}
 		frame, err := vt.Capture(w.term, p.cols, p.rows, p.offset)
 		if err != nil {
 			s.fail(p, err)

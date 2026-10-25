@@ -85,14 +85,19 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	defer reader.Cancel()
 	done := make(chan struct{})
-	defer close(done)
+	readDone := make(chan struct{})
+	defer func() {
+		close(done)
+		reader.Cancel()
+		<-readDone
+		reader.Close()
+	}()
 	input := make(chan []byte, 1)
 	failure := make(chan error, 2)
 	incoming := make(chan response, 4)
 	go func() {
+		defer close(readDone)
 		buf := make([]byte, 4096)
 		for {
 			n, err := reader.Read(buf)
@@ -330,8 +335,7 @@ func (c *client) menuKey(b byte) error {
 				err = c.send(request{Op: "select", Number: c.current.Windows[c.choice].Number})
 			}
 		}
-		c.mode, c.previous = " ", nil
-		c.mode = ""
+		c.mode, c.previous = "", nil
 		return err
 	} else if strings.HasPrefix(key, "\x1b") || key == "q" {
 		c.mode, c.previous = "", nil

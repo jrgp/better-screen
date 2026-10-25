@@ -167,7 +167,10 @@ func (c *terminalClient) exited() {
 	c.t.Helper()
 	select {
 	case <-c.waitDone:
-		require.NoError(c.t, c.waitErr)
+		c.mu.Lock()
+		output := c.raw.String()
+		c.mu.Unlock()
+		require.NoError(c.t, c.waitErr, output)
 	case <-time.After(5 * time.Second):
 		c.t.Fatal("client failed to exit")
 	}
@@ -183,7 +186,11 @@ func (c *terminalClient) command(command, marker string) {
 
 func TestE2E(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "bs")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/bs")
+	args := []string{"build", "-o", bin}
+	if raceEnabled {
+		args = append(args, "-race")
+	}
+	build := exec.Command("go", append(args, "./cmd/bs")...)
 	build.Dir = ".."
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, string(out))

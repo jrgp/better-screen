@@ -65,6 +65,7 @@ func TestHistoryAndIndependentInstances(t *testing.T) {
 			for i := range 30 {
 				term.VTWrite(fmt.Appendf(nil, "history-%02d\r\n", i))
 			}
+
 			f, err := Capture(term, 20, 4, 25)
 			require.NoError(t, err)
 			require.Contains(t, f.Lines[0], "history-02")
@@ -72,4 +73,57 @@ func TestHistoryAndIndependentInstances(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+func TestChangedRowsAndShrink(t *testing.T) {
+	screen, err := New(20, 5)
+	require.NoError(t, err)
+	defer screen.Close()
+	first := Frame{Lines: []string{"one", "two", "three", "four"}, CursorStyle: 2, Visible: true}
+	screen.VTWrite([]byte(Draw(nil, first)))
+	require.Equal(t, "", Draw(&first, first))
+	second := first
+	second.Lines = []string{"one", "two"}
+	screen.VTWrite([]byte(Draw(&first, second)))
+	require.NotContains(t, plain(t, screen), "three")
+	require.NotContains(t, plain(t, screen), "four")
+}
+
+func TestStyledErasesAndWideGraphemes(t *testing.T) {
+	source, err := New(20, 4)
+	require.NoError(t, err)
+	defer source.Close()
+	source.VTWrite([]byte("\x1b[41m\x1b[2J\x1b[2;2H\x1b[1;3;4m界e\u0301\x1b[0m\x1b[?25l"))
+	f, err := Capture(source, 20, 4, 0)
+	require.NoError(t, err)
+	target, err := New(20, 4)
+	require.NoError(t, err)
+	defer target.Close()
+	target.VTWrite([]byte(Draw(nil, f)))
+	for _, pos := range []ghostty.Point{{Tag: ghostty.PointTagActive, X: 18, Y: 0}, {Tag: ghostty.PointTagActive, X: 1, Y: 1}} {
+		ref, err := target.GridRef(pos)
+		require.NoError(t, err)
+		style, err := ref.Style()
+		require.NoError(t, err)
+		if pos.Y == 1 {
+			require.Equal(t, uint8(1), style.BgColor().Palette)
+			require.True(t, style.Bold())
+			require.True(t, style.Italic())
+			require.Equal(t, ghostty.UnderlineSingle, style.Underline())
+		} else {
+			cell, err := ref.Cell()
+			require.NoError(t, err)
+			color, err := cell.ColorPalette()
+			require.NoError(t, err)
+			require.Equal(t, uint8(1), color)
+		}
+	}
+	ref, err := target.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: 3, Y: 1})
+	require.NoError(t, err)
+	graphemes, err := ref.Graphemes()
+	require.NoError(t, err)
+	require.Equal(t, []uint32{'e', 0x301}, graphemes)
+	visible, err := target.CursorVisible()
+	require.NoError(t, err)
+	require.False(t, visible)
 }

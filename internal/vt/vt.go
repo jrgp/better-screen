@@ -3,6 +3,7 @@ package vt
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	ghostty "go.mitchellh.com/libghostty"
@@ -147,6 +148,9 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 // Draw updates changed rows only. Autowrap is disabled so the bottom-right cell
 // cannot scroll the physical terminal. CUP clears pending-wrap state.
 func Draw(previous *Frame, f Frame) string {
+	if previous != nil && slices.Equal(previous.Lines, f.Lines) && previous.X == f.X && previous.Y == f.Y && previous.Visible == f.Visible && previous.CursorStyle == f.CursorStyle && slices.Equal(previous.Modes, f.Modes) && previous.Keypad == f.Keypad {
+		return ""
+	}
 	var b strings.Builder
 	b.WriteString("\x1b[?25l\x1b[?7l\x1b[0m")
 	if previous == nil {
@@ -158,7 +162,15 @@ func Draw(previous *Frame, f Frame) string {
 		}
 		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m\x1b[2K%s", y+1, line)
 	}
+	if previous != nil {
+		for y := len(f.Lines); y < len(previous.Lines); y++ {
+			fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m\x1b[2K", y+1)
+		}
+	}
 	for _, mode := range []int{1, 5, 9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004} {
+		if previous != nil && slices.Contains(previous.Modes, mode) == slices.Contains(f.Modes, mode) {
+			continue
+		}
 		on := false
 		for _, m := range f.Modes {
 			if m == mode {
@@ -171,10 +183,12 @@ func Draw(previous *Frame, f Frame) string {
 		}
 		fmt.Fprintf(&b, "\x1b[?%d%s", mode, state)
 	}
-	if f.Keypad {
-		b.WriteString("\x1b=")
-	} else {
-		b.WriteString("\x1b>")
+	if previous == nil || previous.Keypad != f.Keypad {
+		if f.Keypad {
+			b.WriteString("\x1b=")
+		} else {
+			b.WriteString("\x1b>")
+		}
 	}
 	fmt.Fprintf(&b, "\x1b[0m\x1b[%d q\x1b[%d;%dH", f.CursorStyle, f.Y+1, f.X+1)
 	if f.Visible {
