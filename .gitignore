@@ -1,0 +1,4 @@
+.deps/
+/bs
+/ghostty-poc
+*.test
