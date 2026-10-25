@@ -20,6 +20,19 @@ import (
 )
 
 func runStartup(t *testing.T, bin string) {
+	t.Run("unexpected-daemon-disconnect-is-error", func(t *testing.T) {
+		h := newHarness(t, bin)
+		c := h.client(80, 24, "-S", "disconnect")
+		c.await("bs$ ")
+		h.stopDaemon()
+		select {
+		case <-c.waitDone:
+			require.Error(t, c.waitErr)
+		case <-time.After(5 * time.Second):
+			t.Fatal("client did not notice daemon disconnect")
+		}
+		c.await("bs:")
+	})
 	t.Run("version-without-home", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

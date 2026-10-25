@@ -136,6 +136,9 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 			case <-done:
 				return
 			}
+			if r.Done {
+				return
+			}
 		}
 	}()
 	signals := make(chan os.Signal, 4)
@@ -168,6 +171,9 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 				return fmt.Errorf("incompatible daemon protocol")
 			}
 			if r.Error != "" {
+				if r.Done {
+					return errors.New(r.Error)
+				}
 				c.status = r.Error
 				statusAt = time.Now()
 			}
@@ -207,9 +213,6 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 				return err
 			}
 		case err := <-failure:
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
 			return err
 		case <-tick.C:
 			changed := false
