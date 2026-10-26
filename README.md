@@ -71,7 +71,8 @@ Press **Ctrl-A**, release it, then:
 | Key | Action |
 |---|---|
 | `c` | Create window |
-| `n` / `p` | Next / previous window |
+| `n` / `Space` | Next window |
+| `p` | Previous window |
 | `0`-`9` | Select numbered window |
 | `"` | Window list |
 | `s` | Session switcher |

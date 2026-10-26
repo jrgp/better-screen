@@ -15,6 +15,38 @@ import (
 )
 
 func runWindowLifecycle(t *testing.T, bin string) {
+	t.Run("space-next-window-binding", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 16, "-S", "space")
+		a.await("bs$ ")
+		a.write("\x01 ")
+		a.command("printf 'single-%s\\n' window", "single-window")
+		for number := range 3 {
+			if number > 0 {
+				a.write("\x01c")
+			}
+			a.command(fmt.Sprintf("printf 'window-%%s\\n' %d", number), fmt.Sprintf("window-%d", number))
+		}
+		b := h.client(80, 16, "-x", "space")
+		b.await("window-2")
+		for _, step := range []struct {
+			keys string
+			want int
+		}{{"\x01 ", 0}, {"\x01n", 1}, {"\x01 ", 2}, {"\x01 ", 0}, {"\x01p", 2}} {
+			for i := range len(step.keys) {
+				a.write(step.keys[i : i+1])
+			}
+			for _, c := range []*terminalClient{a, b} {
+				c.await(fmt.Sprintf("window-%d", step.want))
+				c.pickerColors(15, step.want, 3)
+			}
+		}
+		a.command("printf 'normal-%s\\n' 'space preserved'", "normal-space preserved")
+		b.await("normal-space preserved")
+		a.write("\x01?")
+		a.await("n/Space  next")
+	})
+
 	for _, action := range []struct {
 		name, keys string
 	}{{"shell-exit", "exit\r"}, {"window-kill", "\x01k"}, {"last-pane-kill", "\x01K"}} {
