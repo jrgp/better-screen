@@ -1,5 +1,10 @@
 # bs - Better Screen
 
+> "What terminal multiplexer is that?"\
+> "It's B-S"\
+> "It's bullsh-?"\
+> "No, it's Better Screen"
+
 A GNU Screen-style terminal multiplexer for Linux and macOS. Keep shells and
 full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 
