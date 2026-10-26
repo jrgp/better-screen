@@ -33,4 +33,4 @@ release:
 	}
 
 clean:
-	rm -f bs ghostty-poc dist/bs-linux-amd64 dist/bs-linux-arm64 dist/bs-darwin-amd64 dist/bs-darwin-arm64
+	rm -f bs dist/bs-linux-amd64 dist/bs-linux-arm64 dist/bs-darwin-amd64 dist/bs-darwin-arm64

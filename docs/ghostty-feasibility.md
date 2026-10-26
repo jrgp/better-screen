@@ -11,8 +11,9 @@ Validated on Linux amd64 with Go 1.26.10, GCC 16, Zig 0.17.0:
 ## Evidence
 
 `internal/vt/vt_test.go` compiles and exercises the actual static native library.
-`cmd/ghostty-poc` is a standalone executable feeding VT, reading state,
-resizing, and emitting reconstructed colored terminal output.
+The initial standalone proof of concept has been retired; its VT ingestion,
+state inspection, resizing and colored reconstruction checks are covered by
+these tests.
 
 | Requirement | Verified API / evidence |
 |---|---|
@@ -26,7 +27,7 @@ resizing, and emitting reconstructed colored terminal output.
 | VT reconstruction | Native `FormatterFormatVT`, rectangular selections, explicit screen positioning |
 | UTF-8, wide and combining characters | Native grapheme handling; wide Chinese and combining accent input |
 | Multiple concurrent instances | Independent goroutines, one owner per instance |
-| Static native linking | Default bindings use `pkg-config --static`; `ldd ghostty-poc` shows libc only, no Ghostty/Zig runtime |
+| Static native linking | Default bindings use `pkg-config --static`; `ldd ./bs` shows libc only, no Ghostty/Zig runtime |
 
 ## A parser is not a renderer
 
@@ -59,12 +60,11 @@ operate concurrently. Go's race detector does not instrument native code.
 Install Go >=1.26, a C compiler, pkg-config, make and Zig 0.17.0. Then:
 
 ```sh
-make deps
+make build
 export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
-go test -v ./internal/vt
-go build -o ghostty-poc ./cmd/ghostty-poc
-./ghostty-poc
-ldd ./ghostty-poc # Linux; use otool -L on macOS
+go test -count=1 -v ./internal/vt
+./bs -v
+ldd ./bs # Linux; use otool -L on macOS
 ```
 
 The gate passed **before** implementing daemon/session/client functionality.
