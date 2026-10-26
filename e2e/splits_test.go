@@ -134,7 +134,7 @@ func runSplits(t *testing.T, bin string) {
 		c.command("printf '\\033[2J\\033[Hnested-%s\\n' fifth", "nested-fifth")
 		c.border(19, 7, '┴')
 		c.border(19, 0, '│')
-		c.awaitRow(15, "0"+strings.Repeat(" ", 73)+"nested")
+		c.awaitRow(15, defaultStatusRow(80, "nested", "sh"))
 	})
 
 	t.Run("pane-pty-sizes-removal-and-canonical-fit", func(t *testing.T) {

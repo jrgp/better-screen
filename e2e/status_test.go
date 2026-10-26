@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,11 +32,14 @@ func (c *terminalClient) awaitRow(y int, want string) {
 
 func (c *terminalClient) pickerColors(y, active, count int) {
 	c.t.Helper()
+	row := c.row(y)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	x := 0
 	for number := range count {
 		digits := strconv.Itoa(number)
+		at := strings.Index(row, digits+":")
+		require.NotEqual(c.t, -1, at, "window %d must appear in the picker", number)
+		x := ansi.StringWidth(row[:at])
 		for i := range len(digits) {
 			ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: uint16(x + i), Y: uint32(y)})
 			require.NoError(c.t, err)
@@ -47,8 +51,15 @@ func (c *terminalClient) pickerColors(y, active, count int) {
 				require.True(c.t, style.IsDefault(), "inactive window %d must use default attributes", number)
 			}
 		}
-		x += len(digits) + 1
 	}
+}
+
+func defaultStatusRow(cols int, name string, titles ...string) string {
+	var left strings.Builder
+	for number, title := range titles {
+		fmt.Fprintf(&left, "%d:%s ", number, title)
+	}
+	return left.String() + strings.Repeat(" ", cols-ansi.StringWidth(left.String())-ansi.StringWidth(name)) + name
 }
 
 func runStatus(t *testing.T, bin string) {
@@ -64,7 +75,7 @@ func runStatus(t *testing.T, bin string) {
 			c.command("printf 'dimensions:'; stty size", fmt.Sprintf("dimensions:%d 80", rows))
 			c.command("printf '\\033[999;1Hbottom-%s' content", "bottom-content")
 			if rows == 11 {
-				c.awaitRow(11, "0"+strings.Repeat(" ", 75)+"work")
+				c.awaitRow(11, defaultStatusRow(80, "work", "sh"))
 				require.Contains(t, c.row(10), "bottom-content")
 			} else {
 				require.Contains(t, c.row(11), "bottom-content")
@@ -80,8 +91,8 @@ func runStatus(t *testing.T, bin string) {
 			c.write("\x01c")
 			c.await("bs$ ")
 		}
-		left := "0 1 2 3 4 5 6 7 8 9 10 11"
-		want := left + strings.Repeat(" ", 100-len(left)-5) + "named"
+		titles := strings.Fields(strings.Repeat("sh ", 12))
+		want := defaultStatusRow(100, "named", titles...)
 		c.awaitRow(15, want)
 		c.pickerColors(15, 11, 12)
 		for _, number := range []int{0, 4, 9} {
@@ -92,7 +103,7 @@ func runStatus(t *testing.T, bin string) {
 			require.Eventually(t, func() bool {
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: uint16(number * 2), Y: 15})
+				ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: uint16(number * 5), Y: 15})
 				require.NoError(t, err)
 				style, err := ref.Style()
 				require.NoError(t, err)
@@ -106,11 +117,9 @@ func runStatus(t *testing.T, bin string) {
 			require.NotContains(t, change, "\x1b[2J", "window switches should use incremental rendering")
 		}
 		c.write("\x01k")
-		left = "0 1 2 3 4 5 6 7 8 9 10"
-		c.awaitRow(15, left+strings.Repeat(" ", 100-len(left)-5)+"named")
+		c.awaitRow(15, defaultStatusRow(100, "named", titles[:11]...))
 		c.pickerColors(15, 9, 11)
 		c.write("\x01c")
-		left = "0 1 2 3 4 5 6 7 8 9 10 11"
 		c.awaitRow(15, want)
 		c.pickerColors(15, 11, 12)
 		require.NoError(t, pty.Setsize(c.pty, &pty.Winsize{Cols: 85, Rows: 14}))
@@ -119,11 +128,11 @@ func runStatus(t *testing.T, bin string) {
 		c.mu.Unlock()
 		c.write("\x01F")
 		c.command("printf 'new-dimensions:'; stty size", "new-dimensions:13 85")
-		c.awaitRow(13, left+strings.Repeat(" ", 85-len(left)-5)+"named")
+		c.awaitRow(13, defaultStatusRow(85, "named", titles...))
 		c.write("\x01d")
 		c.exited()
 		r := h.client(85, 14, "-r", "named")
-		r.awaitRow(13, left+strings.Repeat(" ", 85-len(left)-5)+"named")
+		r.awaitRow(13, defaultStatusRow(85, "named", titles...))
 	})
 	t.Run("status-physical-resize-without-canonical-fit", func(t *testing.T) {
 		h := newHarness(t, bin)
@@ -133,20 +142,20 @@ func runStatus(t *testing.T, bin string) {
 		c.mu.Lock()
 		require.NoError(t, c.screen.Resize(100, 20, 0, 0))
 		c.mu.Unlock()
-		c.awaitRow(19, "0"+strings.Repeat(" ", 93)+"resize")
+		c.awaitRow(19, defaultStatusRow(100, "resize", "sh"))
 		c.command("printf 'canonical:'; stty size", "canonical:15 80")
 		small := h.client(60, 10, "-x", "resize")
-		small.awaitRow(9, "0"+strings.Repeat(" ", 53)+"resize")
+		small.awaitRow(9, defaultStatusRow(60, "resize", "sh"))
 		c.write("\x01F")
 		c.command("printf '\\033[2J\\033[Hfitted:'; stty size", "fitted:19 100")
 		small.await("fitted:19 100")
-		small.awaitRow(9, "0"+strings.Repeat(" ", 53)+"resize")
+		small.awaitRow(9, defaultStatusRow(60, "resize", "sh"))
 	})
 	t.Run("status-unnamed-identifier", func(t *testing.T) {
 		h := newHarness(t, bin)
 		c := h.client(40, 8)
 		c.await("bs$ ")
-		c.awaitRow(7, "0"+strings.Repeat(" ", 38)+"1")
+		c.awaitRow(7, defaultStatusRow(40, "1", "sh"))
 		require.Contains(t, h.cli("-ls"), "1\t")
 	})
 }

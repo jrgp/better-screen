@@ -103,18 +103,48 @@ pane control.
 ## Status line and configuration
 
 By default the final physical terminal row is reserved for a status line:
-ascending window numbers on the left, and the session name on the right.
+ascending `number:title` window labels on the left, and the session name on the
+right. Ghostty's OSC 0/2 title is stored per pane; a window exposes its focused
+pane's title. Empty titles fall back to the shell name. No process inspection
+or title guessing is involved.
 An automatically assigned session identifier is shown for unnamed sessions,
-matching `bs -ls` and `bs -x`. Only the active number is light blue
+matching `bs -ls` and `bs -x`. The active window label is light blue
 (RGB 135, 206, 250), matching split borders; other text uses default colors.
 Window switching never adds decorations or moves the picker. Narrow terminals
 clip the picker to leave room for the right-aligned identifier.
 
-Configuration lives in `~/.bs/config.json`. The only setting is `status_line`,
-a boolean, defaulting to `true`; `false` returns the row to applications. Missing
-files and `{}` use the default. Invalid JSON, unknown settings, invalid types,
-and files over 64 KiB report an error. Configuration is loaded at startup,
-not hot-reloaded; existing daemons retain their startup setting.
+Configuration lives in `~/.bs/config.json`. `status_line` is a boolean,
+defaulting to `true`; `false` returns the row to applications. The other three
+settings are Go `text/template` strings:
+
+| Setting | Default |
+|---|---|
+| `status_line_left` | Window loop shown below |
+| `status_line_center` | Empty |
+| `status_line_right` | `{{ .Session.Name }}` |
+
+```gotemplate
+{{ range .Windows }}{{ if .Active }}{{ highlight (printf "%d:%s" .Number .Title) }}{{ else }}{{ .Number }}:{{ .Title }}{{ end }} {{ end }}
+```
+
+Each section receives copied, read-only `.Windows` values (`.Number`, `.Title`,
+`.Active`) and `.Session` (`.Name`, `.ID`). `.ID` is the existing attach
+identifier; `.Name` is the session name, or that identifier for unnamed sessions.
+The `highlight` function applies the existing active-window accent, not a
+template-configurable color. The default keeps identical spacing when switching;
+custom conditionals should likewise avoid adding active-only decorations.
+
+Sections use terminal-cell widths and grapheme-aware clipping. Centering is
+relative to the full terminal width, not the space remaining between left and
+right. Overlap clips center first, then left, preserving right. A section
+extending beyond the terminal is clipped to fit. Templates and application
+titles cannot inject terminal controls; only the known highlight styling is
+allowed through. Template output is bounded to 64 KiB per section.
+
+Missing keys use defaults; explicitly empty strings render nothing. Templates
+are parsed once at startup. Invalid JSON, unknown settings, invalid types,
+template parse/execution errors and files over 64 KiB report explicit errors.
+Configuration is not hot-reloaded; existing daemons retain their startup setting.
 To change it, finish existing sessions and start a new one. Do not terminate
 a daemon whose sessions you want to keep.
 

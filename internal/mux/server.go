@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/jrgp/bs/internal/vt"
 	"github.com/shirou/gopsutil/v4/process"
@@ -598,7 +597,7 @@ func (p *peer) resolveScroll(t *ghostty.Terminal) error {
 func (s *Server) windowInfos(session *session) []windowInfo {
 	result := make([]windowInfo, 0, len(session.windows))
 	for number, w := range session.windows {
-		result = append(result, windowInfo{Number: number, Title: w.focused.title})
+		result = append(result, windowInfo{Number: number, Title: cleanText(w.focused.title), Active: number == session.selected})
 	}
 	return result
 }
@@ -610,23 +609,6 @@ func (s *Server) contentRows(rows int) int {
 		return rows - 1
 	}
 	return rows
-}
-
-func (s *Server) statusLine(session *session, cols int) string {
-	var picker strings.Builder
-	for i, info := range s.windowInfos(session) {
-		if i > 0 {
-			picker.WriteByte(' ')
-		}
-		if info.Number == session.selected {
-			picker.WriteString(accent)
-		}
-		fmt.Fprint(&picker, info.Number)
-		picker.WriteString("\x1b[39m")
-	}
-	name := session.name[:min(cols, len(session.name))]
-	left := ansi.Truncate(picker.String(), max(0, cols-len(name)-1), "")
-	return "\x1b[0m" + left + "\x1b[0m" + strings.Repeat(" ", cols-len(name)-ansi.StringWidth(left)) + name
 }
 
 func (s *Server) newWindow(session *session) error {
@@ -825,8 +807,11 @@ func (s *Server) paneEvent(e event) {
 				title, err := e.pane.term.Title()
 				if err != nil {
 					s.log.Print(err)
-				} else if title != "" {
+				} else {
 					e.pane.title = title
+					if cleanText(title) == "" {
+						e.pane.title = filepath.Base(s.shell)
+					}
 				}
 				session.dirty = true
 			}

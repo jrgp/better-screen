@@ -15,7 +15,7 @@ full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 * Multi-attach with shared window selection, layouts and pane focus.
 * Interactive session/window switchers and client-specific scrollback.
 * Reliable reattachment to Vim, less and htop, with colors and Unicode intact.
-* An optional status line showing windows and the current session.
+* An optional templated status line showing application titles and the session.
 
 ## Install
 
@@ -103,6 +103,26 @@ The status line is enabled by default. To disable it, put this in
 ```json
 {"status_line": false}
 ```
+
+The default shows `number:title` for each window on the left and the session
+name on the right. Titles come from applications (OSC 0/2), with the shell name
+as a fallback; a split window shows its focused pane's title.
+
+Customize the three sections with Go templates. For example, center the session
+name while keeping the default left section:
+
+```json
+{
+  "status_line_center": "{{ .Session.Name }}",
+  "status_line_right": ""
+}
+```
+
+`status_line_left`, `status_line_center` and `status_line_right` receive
+`.Windows` (`.Number`, `.Title`, `.Active`) and `.Session` (`.Name`, `.ID`).
+Use `{{ highlight "text" }}` for active-window styling. Missing keys use defaults;
+empty strings render nothing. Center text clips first on overlap, then left;
+right text has priority. Terminal control sequences are stripped.
 
 Configuration loads when the daemon starts. Finish existing sessions before
 starting a new daemon to apply changes.

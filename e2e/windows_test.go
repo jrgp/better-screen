@@ -66,12 +66,11 @@ func runWindowLifecycle(t *testing.T, bin string) {
 			b.await("window-E")
 			expect := func(active int, labels ...string) {
 				t.Helper()
-				var numbers []string
-				for i := range labels {
-					numbers = append(numbers, fmt.Sprint(i))
+				var titles []string
+				for _, label := range labels {
+					titles = append(titles, "order-"+label)
 				}
-				picker := strings.Join(numbers, " ")
-				row := picker + strings.Repeat(" ", 80-len(picker)-len("order")) + "order"
+				row := defaultStatusRow(80, "order", titles...)
 				for _, c := range []*terminalClient{a, b} {
 					c.await("window-" + labels[active])
 					c.awaitRow(15, row)
@@ -153,7 +152,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		require.NoError(t, err)
 		require.Positive(t, pid)
 		require.NoError(t, syscall.Kill(pid, syscall.SIGTERM))
-		c.awaitRow(15, "0 1"+strings.Repeat(" ", 67)+"background")
+		c.awaitRow(15, defaultStatusRow(80, "background", "sh", "sh"))
 		c.pickerColors(15, 1, 2)
 		c.command("printf 'selected-%s\\n' \"$TOKEN\"", "selected-C")
 		c.write("\x01n")

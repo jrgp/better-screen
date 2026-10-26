@@ -138,7 +138,7 @@ func runPaneLifecycle(t *testing.T, bin string) {
 		c.write("\x01F\x01\t\x01\t")
 		c.awaitRow(1, "tiny")
 		large := h.client(80, 16, "-x", "tiny")
-		large.awaitRow(15, "0"+strings.Repeat(" ", 75)+"tiny")
+		large.awaitRow(15, defaultStatusRow(80, "tiny", "sh"))
 		large.write("\x01|")
 		large.await("pane too small to split")
 		require.NoError(t, pty.Setsize(c.pty, &pty.Winsize{Cols: 80, Rows: 16}))

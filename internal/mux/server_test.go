@@ -19,7 +19,9 @@ import (
 func TestDaemonLifecycle(t *testing.T) {
 	home := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
-	server := NewServer(home, "/bin/sh", log.New(io.Discard, "", 0), Config{StatusLine: true})
+	config, err := loadConfig(home)
+	require.NoError(t, err)
+	server := NewServer(home, "/bin/sh", log.New(io.Discard, "", 0), config)
 	done := make(chan error, 1)
 	go func() { done <- server.Run(ctx) }()
 	t.Cleanup(func() {

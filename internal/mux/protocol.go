@@ -40,6 +40,7 @@ type sessionInfo struct {
 type windowInfo struct {
 	Number int
 	Title  string
+	Active bool
 }
 
 type response struct {
