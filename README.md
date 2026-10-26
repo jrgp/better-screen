@@ -61,6 +61,8 @@ bs -v                # print version
 
 Unambiguous session-name prefixes work. Detaching leaves programs running.
 Exiting the final pane closes its window; the final window closes its session.
+New windows and panes start in the session's original working directory,
+falling back to `$HOME` if it no longer exists.
 
 ### Keys
 

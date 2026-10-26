@@ -48,6 +48,7 @@ func newConfiguredHarness(t *testing.T, bin, config string, shell ...string) *ha
 	}
 	h := &harness{t: t, bin: bin, home: home, daemonDone: make(chan struct{})}
 	h.daemon = exec.Command(bin, "__daemon")
+	h.daemon.Dir = home
 	h.daemon.Env = h.env()
 	if len(shell) > 0 {
 		h.daemon.Env = append(h.daemon.Env, "SHELL="+shell[0])
@@ -128,7 +129,13 @@ type terminalClient struct {
 
 func (h *harness) client(cols, rows int, args ...string) *terminalClient {
 	h.t.Helper()
+	return h.clientAt(h.home, cols, rows, args...)
+}
+
+func (h *harness) clientAt(dir string, cols, rows int, args ...string) *terminalClient {
+	h.t.Helper()
 	cmd := exec.Command(h.bin, args...)
+	cmd.Dir = dir
 	cmd.Env = h.env()
 	screen, err := vt.New(cols, rows, ghostty.WithModeDefault(ghostty.NewMode(2027, false), false))
 	require.NoError(h.t, err)
@@ -443,4 +450,5 @@ func TestE2E(t *testing.T) {
 	runPaneApplications(t, bin)
 	runPaneRendering(t, bin)
 	runUnicode(t, bin)
+	runWorkingDirectories(t, bin)
 }

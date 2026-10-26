@@ -112,6 +112,14 @@ func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string)
 		r.Op, r.Name, r.Multi = "attach", *multi, true
 	}
 	start := r.Op == "create" && !*list
+	if start {
+		r.Dir, err = os.Getwd()
+		if errors.Is(err, os.ErrNotExist) {
+			r.Dir = home
+		} else if err != nil {
+			return fmt.Errorf("determine session directory: %w", err)
+		}
+	}
 	conn, err := connect(home, start)
 	if err != nil {
 		if !start && (errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {

@@ -43,6 +43,7 @@ type window struct {
 
 type session struct {
 	name       string
+	dir        string
 	windows    []*window
 	selected   int
 	cols, rows int
@@ -405,7 +406,15 @@ func (s *Server) handle(p *peer, r request) {
 					return
 				}
 			}
-			target = &session{name: r.Name, cols: r.Cols, rows: r.Rows, dirty: true}
+			dir := r.Dir
+			if dir == "" {
+				dir = s.home
+			}
+			if !filepath.IsAbs(dir) {
+				s.fail(p, fmt.Errorf("session directory must be an absolute path"))
+				return
+			}
+			target = &session{name: r.Name, dir: dir, cols: r.Cols, rows: r.Rows, dirty: true}
 			if err = s.newWindow(target); err == nil {
 				s.sessions = append(s.sessions, target)
 			}
@@ -653,6 +662,20 @@ func (s *Server) newPane(session *session, cols, rows int) (*pane, error) {
 	if total >= maxTotalPanes {
 		return nil, fmt.Errorf("pane limit reached")
 	}
+	dir := ""
+	for _, candidate := range []string{session.dir, s.home} {
+		info, err := os.Stat(candidate)
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("access session directory %q: %w", candidate, err)
+		}
+		if info.IsDir() {
+			dir = candidate
+			break
+		}
+	}
 	w := &pane{input: make(chan []byte, 64), done: make(chan struct{}), wait: make(chan struct{}), title: filepath.Base(s.shell)}
 	term, err := vt.New(cols, rows, ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
 		if !s.queueInput(w, append([]byte(nil), data...)) {
@@ -664,8 +687,8 @@ func (s *Server) newPane(session *session, cols, rows int) (*pane, error) {
 	}
 	w.term = term
 	cmd := exec.Command(s.shell)
-	cmd.Dir = s.home
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "BS_SESSION="+session.name)
+	cmd.Dir = dir
+	cmd.Env = append(cmd.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "BS_SESSION="+session.name)
 	w.cmd = cmd
 	w.pty, err = pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {

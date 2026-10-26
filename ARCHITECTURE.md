@@ -58,8 +58,13 @@ default version. `VERSION` also works with `scripts/build-target.sh`.
 
 ## Process lifecycle
 
-Shells use `$SHELL` (otherwise `/bin/sh`), start in HOME, and receive
+Shells use `$SHELL` (otherwise `/bin/sh`) and receive
 `TERM=xterm-256color`, `COLORTERM=truecolor` and `BS_SESSION`.
+Each session remembers its creating client's working directory. New windows
+and split panes start there, regardless of later shell directory changes or
+reattachment from elsewhere. If that directory is gone or no longer a directory,
+they start in `$HOME` instead. If HOME is also missing, bs leaves the working
+directory unset for the shell to handle; it does not create HOME.
 When a pane's shell or its exec-replacement exits, that pane is removed.
 Closing the final pane removes its window.
 Closing the last window ends its session and disconnects its clients.

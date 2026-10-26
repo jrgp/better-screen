@@ -25,6 +25,7 @@ const (
 type request struct {
 	Version      int
 	Op, Name     string
+	Dir          string
 	Cols, Rows   int
 	Multi, Force bool
 	Data         []byte
