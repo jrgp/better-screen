@@ -35,9 +35,10 @@ type pane struct {
 }
 
 type window struct {
-	root    *layout
-	focused *pane
-	borders [][]byte
+	root      *layout
+	focused   *pane
+	borders   [][]byte
+	broadcast bool
 }
 
 type session struct {
@@ -414,7 +415,7 @@ func (s *Server) handle(p *peer, r request) {
 				return
 			}
 			target = &session{name: r.Name, dir: dir, cols: r.Cols, rows: r.Rows, dirty: true}
-			if err = s.newWindow(target); err == nil {
+			if err = s.newWindow(target, r.Commands...); err == nil {
 				s.sessions = append(s.sessions, target)
 			}
 		} else {
@@ -458,6 +459,9 @@ func (s *Server) handle(p *peer, r request) {
 		w := session.windows[session.selected]
 		focused := w.focused
 		switch r.Op {
+		case "broadcast":
+			w.broadcast = !w.broadcast
+			session.dirty = true
 		case "reload":
 			if err := s.reloadConfig(); err != nil {
 				s.fail(p, fmt.Errorf("reload configuration: %w", err))
@@ -469,9 +473,16 @@ func (s *Server) handle(p *peer, r request) {
 				s.fail(p, fmt.Errorf("input exceeds 32768 bytes"))
 				return
 			}
-			if !s.queueInput(focused, r.Data) {
-				s.fail(p, fmt.Errorf("PTY input buffer full"))
-				s.drop(p)
+			targets := []*pane{focused}
+			if w.broadcast {
+				targets = w.root.panes()
+			}
+			for _, target := range targets {
+				if !s.queueInput(target, r.Data) {
+					s.fail(p, fmt.Errorf("PTY input buffer full"))
+					s.drop(p)
+					return
+				}
 			}
 		case "new":
 			if err := s.newWindow(session); err != nil {
@@ -642,7 +653,7 @@ func (p *peer) resolveScroll(t *ghostty.Terminal) error {
 func (s *Server) windowInfos(session *session) []windowInfo {
 	result := make([]windowInfo, 0, len(session.windows))
 	for number, w := range session.windows {
-		result = append(result, windowInfo{Number: number, Title: cleanText(w.focused.title), Active: number == session.selected})
+		result = append(result, windowInfo{Number: number, Title: cleanText(w.focused.title), Active: number == session.selected, Broadcast: w.broadcast})
 	}
 	return result
 }
@@ -656,30 +667,81 @@ func (s *Server) contentRows(rows int) int {
 	return rows
 }
 
-func (s *Server) newWindow(session *session) error {
-	total := 0
+func validatePaneCommands(commands []string) error {
+	if len(commands) > maxPanes {
+		return fmt.Errorf("pane limit is %d commands", maxPanes)
+	}
+	for i, command := range commands {
+		if strings.TrimSpace(command) == "" || strings.ContainsRune(command, 0) {
+			return fmt.Errorf("pane command %d must be nonempty and contain no NUL bytes", i+1)
+		}
+	}
+	return nil
+}
+
+func (s *Server) newWindow(session *session, commands ...string) error {
+	if err := validatePaneCommands(commands); err != nil {
+		return err
+	}
+	if len(commands) == 0 {
+		commands = []string{""}
+	}
+	total, panes := 0, 0
 	for _, s := range s.sessions {
 		total += len(s.windows)
+		for _, w := range s.windows {
+			panes += len(w.root.panes())
+		}
 	}
 	if len(session.windows) >= maxWindows || total >= maxTotalWindows {
 		return fmt.Errorf("window limit reached")
 	}
-	p, err := s.newPane(session, session.cols, s.contentRows(session.rows))
-	if err != nil {
-		return err
+	if panes+len(commands) > maxTotalPanes {
+		return fmt.Errorf("pane limit reached")
 	}
-	w := &window{root: &layout{pane: p}, focused: p}
-	if err := s.resizeWindow(session, w); err != nil {
-		s.stopPane(p)
-		return err
+	cols, rows := session.cols, s.contentRows(session.rows)
+	bestRows, bestScore := 0, 0
+	for r := 1; r <= len(commands); r++ {
+		c := (len(commands) + r - 1) / r
+		if 3*c-1 > cols || 2*r-1 > rows {
+			continue
+		}
+		score := (cols-c+1)/c - 2*((rows-r+1)/r)
+		if score < 0 {
+			score = -score
+		}
+		if bestRows == 0 || score < bestScore {
+			bestRows, bestScore = r, score
+		}
 	}
+	if bestRows == 0 {
+		return fmt.Errorf("terminal too small for %d panes", len(commands))
+	}
+	w := &window{root: commandLayout(len(commands), bestRows)}
+	slots := w.root.panes()
+	w.focused = slots[0]
+	w.place(cols, rows)
+	var started []*pane
+	for i, slot := range slots {
+		p, err := s.newPane(session, slot.bounds.cols, slot.bounds.rows, commands[i])
+		if err != nil {
+			for _, p := range started {
+				s.stopPane(p)
+			}
+			return err
+		}
+		p.bounds = slot.bounds
+		w.root.leaf(slot).pane = p
+		started = append(started, p)
+	}
+	w.focused = started[0]
 	session.windows = append(session.windows, w)
 	session.selected = len(session.windows) - 1
 	session.dirty = true
 	return nil
 }
 
-func (s *Server) newPane(session *session, cols, rows int) (*pane, error) {
+func (s *Server) newPane(session *session, cols, rows int, command string) (*pane, error) {
 	total := 0
 	for _, session := range s.sessions {
 		for _, w := range session.windows {
@@ -714,6 +776,9 @@ func (s *Server) newPane(session *session, cols, rows int) (*pane, error) {
 	}
 	w.term = term
 	cmd := exec.Command(s.shell)
+	if command != "" {
+		cmd.Args = append(cmd.Args, "-c", command)
+	}
 	cmd.Dir = dir
 	cmd.Env = append(cmd.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "BS_SESSION="+session.name)
 	w.cmd = cmd

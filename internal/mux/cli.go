@@ -52,13 +52,19 @@ func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string)
 	detach := flags.Bool("d", false, "detach existing clients (with -r)")
 	list := flags.Bool("ls", false, "list sessions")
 	version := flags.Bool("v", false, "print version")
+	panes := flags.Bool("panes", false, "run each following command in its own pane")
+	var commands []string
 	// flag has no optional string arguments; spell an omitted name as -x=.
 	args = slices.Clone(args)
+scan:
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			break
 		}
 		switch args[i] {
+		case "--panes", "-panes":
+			commands, args = args[i+1:], args[:i+1]
+			break scan
 		case "-S", "--S", "-r", "--r":
 			i++
 		case "-x", "--x":
@@ -77,6 +83,23 @@ func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string)
 	}
 	if flags.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+	}
+	if *panes {
+		incompatible := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name != "S" && f.Name != "panes" {
+				incompatible = true
+			}
+		})
+		if incompatible {
+			return fmt.Errorf("--panes may only be combined with -S")
+		}
+		if len(commands) == 0 {
+			return fmt.Errorf("--panes requires at least one command")
+		}
+		if err := validatePaneCommands(commands); err != nil {
+			return err
+		}
 	}
 	if *version {
 		fmt.Fprintf(out, "bs %s\n", buildVersion)
@@ -104,7 +127,7 @@ func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string)
 	if _, err := loadConfig(home); err != nil {
 		return err
 	}
-	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach}
+	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach, Commands: commands}
 	if *reattach != "" {
 		r.Op, r.Name = "attach", *reattach
 	}

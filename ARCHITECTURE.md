@@ -78,11 +78,29 @@ Layouts are binary split trees: leaves are panes, and internal nodes contain
 an axis and two children. Removing a pane replaces its parent with the surviving
 sibling subtree. There is no independent terminal-state or history implementation.
 
-New windows start with one pane. Splits divide the focused pane approximately
-equally, keep its process, start a new shell, and focus the new pane. Splits
-can nest in either direction; single-cell light blue borders meet at junctions.
-Input goes only to the focused pane. Tab order is a deterministic tree traversal:
-left before right and top before bottom, wrapping at either end.
+Ordinary new windows start with one pane. Splits divide the focused pane
+approximately equally, keep its process, start a new shell, and focus the new
+pane. Splits can nest in either direction; single-cell light blue borders meet
+at junctions. Input normally goes only to the focused pane. Tab order is a
+deterministic tree traversal: left before right and top before bottom, wrapping
+at either end.
+
+`--panes` consumes the remaining command arguments and creates one window with
+exactly one pane per command, each using the daemon's configured shell with `-c`.
+It may be combined only with `-S`. A fitting row count is chosen using terminal
+cell proportions, then balanced horizontal/vertical subtrees reuse the existing
+layout placement. Geometry and resource limits are checked before any process
+starts; each PTY receives its final pane size at launch. The first command is
+focused, traversal follows command order, and existing exit/reflow handling
+removes completed commands. Partial process-start failures stop panes already
+started for that window.
+
+Ctrl-A B toggles a daemon-owned boolean on the current window. When enabled,
+keyboard input requests fan out through existing bounded PTY queues to every
+current leaf; new panes participate automatically. Prefix commands are separate
+IPC operations, not input, and native terminal responses still go only to their
+own pane. Broadcast is initially off, survives window switching and reattachment,
+and is shared by all clients; it does not affect other windows.
 
 Switching windows preserves each window's layout and focused pane. Exiting or
 killing a pane collapses its parent split and expands the surviving subtree;
@@ -128,11 +146,12 @@ settings are Go `text/template` strings:
 ```
 
 Each section receives copied, read-only `.Windows` values (`.Number`, `.Title`,
-`.Active`) and `.Session` (`.Name`, `.ID`). `.ID` is the existing attach
-identifier; `.Name` is the session name, or that identifier for unnamed sessions.
+`.Active`, `.Broadcast`) and `.Session` (`.Name`, `.ID`). `.ID` is the existing
+attach identifier; `.Name` is the session name, or that identifier for unnamed sessions.
 The `highlight` function applies the existing active-window accent, not a
 template-configurable color. The default keeps identical spacing when switching;
 custom conditionals should likewise avoid adding active-only decorations.
+Templates may use `.Broadcast` to add an indicator; the defaults remain unchanged.
 
 Sections use terminal-cell widths and grapheme-aware clipping. Centering is
 relative to the full terminal width, not the space remaining between left and

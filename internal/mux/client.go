@@ -72,6 +72,9 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 	if initial.Error != "" {
 		return errors.New(initial.Error)
 	}
+	if initial.Done {
+		return nil
+	}
 	if initial.Frame == nil {
 		return fmt.Errorf("daemon did not send terminal state")
 	}
@@ -311,6 +314,8 @@ func (c *client) input(data []byte) (bool, error) {
 			case 'R':
 				c.status = ""
 				op = "reload"
+			case 'B':
+				op = "broadcast"
 			case 'd':
 				return true, c.send(request{Op: "detach"})
 			case 'F':
@@ -452,7 +457,7 @@ func (c *client) draw() error {
 				lines = append(lines, fmt.Sprintf("%s%d  %s%s", prefix, w.Number, cleanText(w.Title), current))
 			}
 		} else {
-			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration", "a  literal Ctrl-A    ?  help"}
+			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration   B  broadcast input", "a  literal Ctrl-A    ?  help"}
 		}
 		// Scroll menus within the available rows, keeping the selection visible.
 		start := max(0, c.choice-max(0, c.rows-4))

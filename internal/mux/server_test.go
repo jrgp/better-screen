@@ -65,6 +65,7 @@ func TestProtocolAndNames(t *testing.T) {
 	var r request
 	require.NoError(t, receive(&buf, &r, maxRequest))
 	assert.Equal(t, []byte{0, 1, 255}, r.Data)
+	require.ErrorContains(t, send(io.Discard, request{Commands: []string{string(make([]byte, maxRequest))}}), "IPC request exceeds")
 	require.NoError(t, binary.Write(&buf, binary.BigEndian, uint32(maxRequest+1)))
 	assert.Error(t, receive(&buf, &r, maxRequest))
 	_, err := match([]*session{{name: "work"}, {name: "work2"}}, "wor")

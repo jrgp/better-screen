@@ -29,6 +29,7 @@ type request struct {
 	Cols, Rows   int
 	Multi, Force bool
 	Data         []byte
+	Commands     []string
 	Number       int
 }
 
@@ -38,9 +39,10 @@ type sessionInfo struct {
 }
 
 type windowInfo struct {
-	Number int
-	Title  string
-	Active bool
+	Number    int
+	Title     string
+	Active    bool
+	Broadcast bool
 }
 
 type response struct {
@@ -60,6 +62,9 @@ func send(w io.Writer, value any) error {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
+	}
+	if _, ok := value.(request); ok && len(data) > maxRequest {
+		return fmt.Errorf("IPC request exceeds %d bytes", maxRequest)
 	}
 	if len(data) > maxMessage {
 		return fmt.Errorf("IPC message exceeds %d bytes", maxMessage)

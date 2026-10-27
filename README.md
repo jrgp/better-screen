@@ -13,6 +13,7 @@ full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 * Named sessions and numbered windows, with automatic daemon startup.
 * Nested horizontal/vertical splits and independent shells in each pane.
 * Multi-attach with shared window selection, layouts and pane focus.
+* Launch commands in separate panes and toggle per-window input broadcasting.
 * Interactive session/window switchers and client-specific scrollback.
 * Reliable reattachment to Vim, less and htop, with colors and Unicode intact.
 * An optional templated status line showing application titles and the session.
@@ -64,6 +65,18 @@ Exiting the final pane closes its window; the final window closes its session.
 New windows and panes start in the session's original working directory,
 falling back to `$HOME` if it no longer exists.
 
+Launch several commands in one window:
+
+```sh
+bs -S production --panes "ssh web-01" "ssh web-02" "ssh web-03"
+```
+
+Each argument after `--panes` runs through `$SHELL -c` in its own PTY, with no
+extra default shell. Put `-S` before `--panes`; attach/list/version options cannot
+be combined with it. Panes are arranged automatically and disappear when their
+commands exit. Up to 32 commands are supported, provided the terminal can fit
+them; impossible layouts are rejected before launching anything.
+
 ### Keys
 
 Press **Ctrl-A**, then a key below. You can keep Ctrl held when pressing Space
@@ -84,6 +97,7 @@ to switch windows.
 | `Esc` | Scrollback |
 | `F` | Fit session to this terminal |
 | `R` | Reload configuration for all sessions |
+| `B` | Toggle input broadcast to every pane in this window |
 | `d` | Detach this client |
 | `a` | Send literal Ctrl-A |
 | `?` | Help |
@@ -92,6 +106,12 @@ Menus use arrow keys, Enter to select and Esc to cancel. Session switching
 affects only your client; window selection and pane focus are shared.
 Scrollback uses Up/Down and Page Up/Page Down; Esc returns to live output.
 Text selection and clipboard copying are not implemented.
+
+Broadcast is off by default. When enabled, normal input (including Enter,
+control characters and escape sequences) goes to every pane, including newly
+created panes. Ctrl-A commands still act normally and are not broadcast.
+The toggle belongs to the window, is shared by attached clients and survives
+window switching; disabling it restores focused-pane input.
 
 The first client sets session dimensions; additional clients do not resize it.
 Use Ctrl-A F to fit explicitly. Very small terminals temporarily show only the
@@ -121,10 +141,12 @@ name while keeping the default left section:
 ```
 
 `status_line_left`, `status_line_center` and `status_line_right` receive
-`.Windows` (`.Number`, `.Title`, `.Active`) and `.Session` (`.Name`, `.ID`).
+`.Windows` (`.Number`, `.Title`, `.Active`, `.Broadcast`) and `.Session` (`.Name`, `.ID`).
 Use `{{ highlight "text" }}` for active-window styling. Missing keys use defaults;
 empty strings render nothing. Center text clips first on overlap, then left;
 right text has priority. Terminal control sequences are stripped.
+Inside a window loop, `{{ if .Broadcast }}BROADCAST{{ end }}` can display the
+broadcast state; the default status line does not add an indicator.
 
 Configuration loads when the daemon starts. After editing it, press **Ctrl-A R**
 (uppercase R) to reload it for all sessions without restarting. Invalid

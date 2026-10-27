@@ -91,8 +91,23 @@ func (l *layout) place(r rectangle, borders [][]byte) {
 	l.second.place(b, borders)
 }
 
-func (s *Server) resizeWindow(session *session, w *window) error {
-	cols, rows := session.cols, s.contentRows(session.rows)
+func commandLayout(count, rows int) *layout {
+	if count == 1 {
+		return &layout{pane: &pane{}}
+	}
+	first, firstRows := count/2, 1
+	if rows > 1 {
+		firstRows = rows / 2
+		first = count/rows*firstRows + min(count%rows, firstRows)
+	}
+	return &layout{
+		vertical: rows == 1,
+		first:    commandLayout(first, firstRows),
+		second:   commandLayout(count-first, max(1, rows-firstRows)),
+	}
+}
+
+func (w *window) place(cols, rows int) {
 	w.borders = make([][]byte, rows)
 	for y := range w.borders {
 		w.borders[y] = make([]byte, cols)
@@ -108,6 +123,10 @@ func (s *Server) resizeWindow(session *session, w *window) error {
 	} else {
 		w.root.place(rectangle{cols: cols, rows: rows}, w.borders)
 	}
+}
+
+func (s *Server) resizeWindow(session *session, w *window) error {
+	w.place(session.cols, s.contentRows(session.rows))
 	for _, p := range w.root.panes() {
 		cols, rows := max(1, p.bounds.cols), max(1, p.bounds.rows)
 		oldCols, err := p.term.Cols()
@@ -147,7 +166,7 @@ func (s *Server) split(session *session, w *window, vertical bool) error {
 	} else {
 		rows /= 2
 	}
-	p, err := s.newPane(session, cols, rows)
+	p, err := s.newPane(session, cols, rows, "")
 	if err != nil {
 		return err
 	}
