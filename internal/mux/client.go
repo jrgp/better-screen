@@ -50,7 +50,16 @@ func dimensions(in *os.File) (int, int, error) {
 	return cols, rows, nil
 }
 
-func attach(conn *net.UnixConn, in, out *os.File, r request) error {
+func writeSessionNotice(out io.Writer, name string, exited bool) error {
+	message := "detached from session " + cleanText(name)
+	if exited {
+		message = "session " + cleanText(name) + " exited"
+	}
+	_, err := fmt.Fprintf(out, "\r\x1b[2K[bs: %s]\r\n", message)
+	return err
+}
+
+func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 	cols, rows, err := dimensions(in)
 	if err != nil {
 		return err
@@ -73,7 +82,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 		return errors.New(initial.Error)
 	}
 	if initial.Done {
-		return nil
+		return writeSessionNotice(out, initial.Session, initial.Exited)
 	}
 	if initial.Frame == nil {
 		return fmt.Errorf("daemon did not send terminal state")
@@ -83,11 +92,20 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 	if err != nil {
 		return err
 	}
-	defer term.Restore(int(in.Fd()), state)
 	if _, err := io.WriteString(out, "\x1b[?2027s\x1b[?1049h"); err != nil {
-		return err
+		return errors.Join(err, term.Restore(int(in.Fd()), state))
 	}
-	defer io.WriteString(out, "\x1b[0m\x1b[?1l\x1b>\x1b[?5l\x1b[?7h\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h\x1b[0 q\x1b[?1049l\x1b[?2027r")
+	var completion *response
+	defer func() {
+		// Clear bs's alternate screen, not the caller's restored primary screen.
+		_, clearErr := io.WriteString(out, "\x1b[0m\x1b[?1l\x1b>\x1b[?5l\x1b[?7h\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h\x1b[0 q\x1b[?6l\x1b[?69l\x1b[r\x1b[H\x1b[2J\x1b[?1049l\x1b[?2027r")
+		restoreErr := term.Restore(int(in.Fd()), state)
+		var noticeErr error
+		if completion != nil {
+			noticeErr = writeSessionNotice(out, completion.Session, completion.Exited)
+		}
+		resultErr = errors.Join(resultErr, clearErr, restoreErr, noticeErr)
+	}()
 	reader, err := cancelreader.NewReader(in)
 	if err != nil {
 		return err
@@ -161,7 +179,10 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 				return err
 			}
 			if finished {
-				return nil
+				if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+					return err
+				}
+				continue
 			}
 			if c.keys == "\x1b" || c.mode == "prefix" {
 				escapeAt = time.Now()
@@ -181,6 +202,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 				statusAt = time.Now()
 			}
 			if r.Done {
+				completion = &r
 				return nil
 			}
 			if r.Frame != nil {
@@ -197,6 +219,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) error {
 			}
 		case sig := <-signals:
 			if sig != syscall.SIGWINCH {
+				completion = &response{Session: c.current.Session}
 				return nil
 			}
 			cols, rows, err := dimensions(in)

@@ -32,6 +32,8 @@ func runStartup(t *testing.T, bin string) {
 			t.Fatal("client did not notice daemon disconnect")
 		}
 		c.await("bs:")
+		c.absent("[bs: session disconnect exited]")
+		c.absent("[bs: detached from session disconnect]")
 	})
 	t.Run("version-without-home", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

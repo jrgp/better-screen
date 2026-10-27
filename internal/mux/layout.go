@@ -290,7 +290,7 @@ func (s *Server) removeWindow(session *session, wi int) {
 	if len(session.windows) == 0 {
 		for p := range s.peers {
 			if p.session == session {
-				s.reply(p, response{Done: true})
+				s.reply(p, response{Done: true, Exited: true})
 			}
 		}
 		i := slices.Index(s.sessions, session)

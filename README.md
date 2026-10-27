@@ -62,6 +62,8 @@ bs -v                # print version
 
 Unambiguous session-name prefixes work. Detaching leaves programs running.
 Exiting the final pane closes its window; the final window closes its session.
+bs restores your terminal and prints `[bs: detached from session work]` on
+detach, or `[bs: session work exited]` when the session ends.
 New windows and panes start in the session's original working directory,
 falling back to `$HOME` if it no longer exists.
 

@@ -188,6 +188,13 @@ exit reconstruct the display without replaying historical PTY bytes or asking
 applications to redraw. The native VT formatter preserves attributes,
 ANSI/indexed/RGB colors, wide characters, and combining graphemes; a small
 presentation layer restores position, visibility, shape and input modes.
+On detach or session exit, the client clears its alternate-screen UI before
+restoring the caller's primary screen, terminal settings, cursor and input modes.
+The daemon's final response carries the actual session name and whether it
+exited; the client prints a detached/exited notice only after restoration.
+Detach waits for that response, so immediate session switching reports the
+correct name. Forced detach uses the same notice; an unexpected daemon
+disconnect remains an error rather than claiming the session exited.
 OSC palette/default-color overrides are resolved into RGB SGR rather than
 mutating the outer terminal's palette. Reverse-video effects stay inside
 their pane. Normal output repaints changed rows,

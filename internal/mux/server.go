@@ -264,6 +264,9 @@ func (s *Server) writePeer(p *peer) {
 func (s *Server) reply(p *peer, r response) {
 	r.Version = protocolVersion
 	if r.Done {
+		if p.session != nil {
+			r.Session = p.session.name
+		}
 		p.closing = true
 		p.clearScroll()
 		p.session = nil

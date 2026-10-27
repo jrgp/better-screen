@@ -49,6 +49,7 @@ type response struct {
 	Version  int
 	Error    string
 	Done     bool
+	Exited   bool
 	Session  string
 	Window   int
 	Frame    *vt.Frame

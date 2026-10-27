@@ -454,4 +454,5 @@ func TestE2E(t *testing.T) {
 	runStatusTemplates(t, bin)
 	runConfigReload(t, bin)
 	runBroadcastPanes(t, bin)
+	runFinish(t, bin)
 }
