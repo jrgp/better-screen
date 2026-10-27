@@ -32,14 +32,14 @@ func statusText(text string) string {
 	return out.String()
 }
 
-func (s *Server) statusLine(session *session, cols int) (string, error) {
+func (config Config) statusLine(windows []windowInfo, name string, cols int) (string, error) {
 	data := struct {
 		Windows []windowInfo
 		Session struct{ Name, ID string }
-	}{Windows: s.windowInfos(session)}
-	data.Session.Name, data.Session.ID = session.name, session.name
+	}{Windows: windows}
+	data.Session.Name, data.Session.ID = name, name
 	var sections [3]string
-	for i, t := range s.config.statusTemplates {
+	for i, t := range config.statusTemplates {
 		if t == nil {
 			return "", fmt.Errorf("status templates are not initialized")
 		}

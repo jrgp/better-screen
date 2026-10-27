@@ -458,6 +458,12 @@ func (s *Server) handle(p *peer, r request) {
 		w := session.windows[session.selected]
 		focused := w.focused
 		switch r.Op {
+		case "reload":
+			if err := s.reloadConfig(); err != nil {
+				s.fail(p, fmt.Errorf("reload configuration: %w", err))
+			} else {
+				s.render()
+			}
 		case "input":
 			if len(r.Data) > 32768 {
 				s.fail(p, fmt.Errorf("input exceeds 32768 bytes"))
@@ -549,6 +555,45 @@ func (s *Server) handle(p *peer, r request) {
 			s.fail(p, fmt.Errorf("unknown operation %q", r.Op))
 		}
 	}
+}
+
+func (s *Server) reloadConfig() error {
+	config, err := loadConfig(s.home)
+	if err != nil {
+		return err
+	}
+	for _, session := range s.sessions {
+		if _, err := config.statusLine(s.windowInfos(session), session.name, session.cols); err != nil {
+			return fmt.Errorf("session %s: %w", session.name, err)
+		}
+	}
+	previous := s.config
+	s.config = config
+	if config.StatusLine != previous.StatusLine {
+		resize := func() error {
+			var result error
+			for _, session := range s.sessions {
+				for i, w := range session.windows {
+					if err := s.resizeWindow(session, w); err != nil {
+						result = errors.Join(result, fmt.Errorf("session %s window %d: %w", session.name, i, err))
+					}
+				}
+				s.resetViews(session)
+			}
+			return result
+		}
+		if err := resize(); err != nil {
+			s.config = previous
+			if rollbackErr := resize(); rollbackErr != nil {
+				return errors.Join(err, fmt.Errorf("restoring previous layout: %w", rollbackErr))
+			}
+			return err
+		}
+	}
+	for _, session := range s.sessions {
+		session.dirty = true
+	}
+	return nil
 }
 
 func (s *Server) resetViews(session *session) {

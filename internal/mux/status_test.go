@@ -27,9 +27,8 @@ func TestStatusCellBounds(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(home, ".bs", "config.json"), data, 0600))
 		config, err := loadConfig(home)
 		require.NoError(t, err)
-		server := &Server{config: config}
 		for cols := 1; cols <= 80; cols++ {
-			line, err := server.statusLine(&session{name: "work"}, cols)
+			line, err := config.statusLine(nil, "work", cols)
 			require.NoError(t, err)
 			require.Equal(t, cols, ansi.StringWidth(line), "columns=%d sections=%q output=%q", cols, sections, line)
 		}

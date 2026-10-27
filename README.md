@@ -83,6 +83,7 @@ to switch windows.
 | `k` | Kill whole window |
 | `Esc` | Scrollback |
 | `F` | Fit session to this terminal |
+| `R` | Reload configuration for all sessions |
 | `d` | Detach this client |
 | `a` | Send literal Ctrl-A |
 | `?` | Help |
@@ -125,8 +126,9 @@ Use `{{ highlight "text" }}` for active-window styling. Missing keys use default
 empty strings render nothing. Center text clips first on overlap, then left;
 right text has priority. Terminal control sequences are stripped.
 
-Configuration loads when the daemon starts. Finish existing sessions before
-starting a new daemon to apply changes.
+Configuration loads when the daemon starts. After editing it, press **Ctrl-A R**
+(uppercase R) to reload it for all sessions without restarting. Invalid
+configuration leaves the previous settings in place and shows an error.
 
 ### Build and release
 

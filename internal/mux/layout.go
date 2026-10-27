@@ -253,7 +253,7 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 		}
 	}
 	if s.config.StatusLine {
-		line, err := s.statusLine(session, p.cols)
+		line, err := s.config.statusLine(s.windowInfos(session), session.name, p.cols)
 		if err != nil {
 			return vt.Frame{}, err
 		}

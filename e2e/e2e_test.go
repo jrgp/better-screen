@@ -452,4 +452,5 @@ func TestE2E(t *testing.T) {
 	runUnicode(t, bin)
 	runWorkingDirectories(t, bin)
 	runStatusTemplates(t, bin)
+	runConfigReload(t, bin)
 }

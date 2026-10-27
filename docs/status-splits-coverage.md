@@ -18,6 +18,10 @@ Tests use explicit deadlines and process/socket cleanup.
 | Missing and empty template settings | `status-template-defaults-*` | Missing file/keys and `{}` use defaults; explicit empty left/right/all sections render nothing; the status row remains excluded from PTYs. |
 | Status overlap and Unicode clipping | `status-template-overlap-*` | Center clipped before left; right retains priority; wide/combining/emoji widths, partial-emoji clipping, overlong sections and application content confinement. |
 | Template safety, errors and startup parsing | `status-templates-cannot-inject-terminal-controls`, `status-template-execution-*`, `json-configuration`, `status-template-loops-highlighting-centering-and-resize` | Arbitrary screen/mode/color/clipboard controls cannot escape status; invalid syntax/types/functions report at startup (even when disabled); execution errors and oversized output report clearly; config changes do not hot-reload. |
+| Explicit daemon-side configuration reload | `config-reload-templates-all-sessions-and-clients` | Ctrl-A R updates all three sections immediately across sessions and differently sized clients, including highlighting and Unicode; editing the file alone does not apply it; the daemon socket and shell PID/state survive. |
+| Reloading status-row reservation and split sizing | `config-reload-status-row-resizes-all-panes-and-windows` | Enabling/disabling status changes actual `stty size` for nested panes, inactive windows, other sessions, and detached sessions; the freed final row accepts application output, borders reflow, processes and focus survive, and both clients see restored status. |
+| Invalid-reload rollback and recovery | `config-reload-invalid-config-keeps-working-state` | JSON, types, unknown settings, all three templates' syntax/execution errors (including another session), and oversized output are rejected before applying a status toggle, even when disabling status; only the invoking client sees errors, working templates/dimensions persist, and a valid retry succeeds. |
+| Reload defaults and empty sections | `config-reload-defaults-and-explicit-empty-sections` | Missing keys and a removed config file restore defaults; explicitly empty sections stay empty instead of inheriting previous values; missing `status_line` restores its default and reserved row. |
 | Renumbering and consistent navigation after window removal | `window-renumbering-{shell-exit,window-kill,last-pane-kill}`, `background-window-exit-preserves-selection-and-renumbers` | Middle/first/last removal, survivor order, forward/backward wrap, new-window append, numeric/menu selection, active highlighting, multi-attach and reattachment; background exit preserves the selected survivor. |
 | Fixed active accent and default inactive foreground | `status-picker-colors-order-resize-and-reattach` | Ghostty cell styles for every digit, including multi-digit windows; only the selected number uses RGB 135/206/250. |
 | Switching changes highlight, not picker geometry | `status-picker-colors-order-resize-and-reattach` | Identical plain row before/after selection; changed accent; no whole-screen clear. |
@@ -70,6 +74,6 @@ macOS arm64 are runtime-verified with full ordinary/race suites on native
 [GitHub-hosted runners](https://github.com/jrgp/better-screen/actions/runs/40218373737).
 macOS amd64 runtime verification remains outstanding.
 
-Existing daemons retain their binary and startup configuration. Finish their
-sessions before restarting to load the new binary or configuration. Layouts
-are in-memory daemon state, not persistent across daemon restart.
+Existing daemons retain their binary. Finish their sessions before restarting
+to load a new binary; configuration can be reloaded explicitly with Ctrl-A R.
+Layouts are in-memory daemon state, not persistent across daemon restart.

@@ -142,11 +142,18 @@ titles cannot inject terminal controls; only the known highlight styling is
 allowed through. Template output is bounded to 64 KiB per section.
 
 Missing keys use defaults; explicitly empty strings render nothing. Templates
-are parsed once at startup. Invalid JSON, unknown settings, invalid types,
-template parse/execution errors and files over 64 KiB report explicit errors.
-Configuration is not hot-reloaded; existing daemons retain their startup setting.
-To change it, finish existing sessions and start a new one. Do not terminate
-a daemon whose sessions you want to keep.
+are parsed at startup and on explicit reload, not on redraw. Invalid JSON,
+unknown settings, invalid types, template parse/execution errors and files over
+64 KiB report explicit errors.
+Ctrl-A R asks the central daemon to reload the entire configuration. It parses
+all templates and checks their execution against every session before replacing
+the active configuration in its state-owning event loop. Failures report to the
+invoking client without replacing the previous settings. Success immediately
+redraws all attached clients; toggling the status line reflows every window and
+resizes its PTYs, including inactive windows and detached sessions. A resize
+failure restores the previous configuration and attempts to restore all layouts,
+reporting any restoration errors. Running processes and pane focus are preserved.
+There are no filesystem watchers or automatic reloads.
 
 ## Dimensions and rendering
 
