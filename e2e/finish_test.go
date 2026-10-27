@@ -18,8 +18,11 @@ stty -g > "$tag.before"
 printf '\033[2J\033[HPRIMARY-KEPT\033[16;1HPRIMARY-BOTTOM\033[5;1H'
 "$@"
 code=$?
-stty -g > "$tag.after"
 printf 'PARENT-%s-ready:%s\r\n' "$tag" "$code"
+IFS= read -r restored
+[ "$restored" = restore-check ] || exit 97
+stty -g > "$tag.after"
+printf 'PARENT-%s-restored\r\n' "$tag"
 IFS= read -r check
 printf '\033[?47h\033[HALT-CHECK'
 IFS= read -r ack
@@ -33,6 +36,9 @@ func restoredParent(t *testing.T, h *harness, c *terminalClient, tag, notice str
 	t.Helper()
 	c.await(notice)
 	c.await("PARENT-" + tag + "-ready:0")
+	// Darwin's transient PENDIN flag clears when canonical input is processed.
+	c.write("restore-check\r")
+	c.await("PARENT-" + tag + "-restored")
 	require.Equal(t, "PRIMARY-KEPT", strings.TrimSpace(c.row(0)))
 	require.Equal(t, "PRIMARY-BOTTOM", strings.TrimSpace(c.row(15)))
 	c.absent("pane-artifact")

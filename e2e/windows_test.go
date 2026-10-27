@@ -216,6 +216,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 			})
 		}
 		assert.Contains(t, h.cli("-ls"), "No sessions.")
+		h.awaitDaemonExit()
 	})
 
 	t.Run("bare-multi-attach", func(t *testing.T) {
