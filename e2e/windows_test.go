@@ -15,6 +15,156 @@ import (
 )
 
 func runWindowLifecycle(t *testing.T, bin string) {
+	t.Run("window-reordering", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 16, "-S", "move")
+		a.await("bs$ ")
+		pids := make(map[string]string)
+		create := func(label string) {
+			t.Helper()
+			a.command("TOKEN="+label+"; printf '%s' $$ > "+label+".pid; printf '\\033]2;order-%s\\007\\033[2J\\033[Hwindow-%s\\n' \"$TOKEN\" \"$TOKEN\"", "window-"+label)
+			pid, err := os.ReadFile(filepath.Join(h.home, label+".pid"))
+			require.NoError(t, err)
+			pids[label] = string(pid)
+		}
+		create("A")
+		a.write("\x01\x1b[D\x01\x1b[C")
+		a.command("printf 'single-%s\\n' \"$TOKEN\"", "single-A")
+		for _, label := range []string{"B", "C", "D"} {
+			a.write("\x01c")
+			create(label)
+		}
+		b := h.client(80, 16, "-x", "move")
+		b.await("window-D")
+		expect := func(active int, labels ...string) {
+			t.Helper()
+			var titles []string
+			for _, label := range labels {
+				titles = append(titles, "order-"+label)
+			}
+			for _, c := range []*terminalClient{a, b} {
+				c.await("window-" + labels[active])
+				c.awaitRow(15, defaultStatusRow(80, "move", titles...))
+				c.pickerColors(15, active, len(labels))
+			}
+		}
+		for i, step := range []struct {
+			client *terminalClient
+			keys   string
+			active int
+			labels []string
+			split  bool
+		}{
+			{a, "\x01\x1b[D", 2, []string{"A", "B", "D", "C"}, false},
+			{b, "\x01\x1bOD", 1, []string{"A", "D", "B", "C"}, true},
+			{a, "\x01\x1bOD", 0, []string{"D", "A", "B", "C"}, false},
+			{a, "\x01\x1b[D", 3, []string{"A", "B", "C", "D"}, false},
+			{b, "\x01\x1bOC", 0, []string{"D", "A", "B", "C"}, false},
+			{a, "\x01\x1b[C", 1, []string{"A", "D", "B", "C"}, true},
+			{a, "\x01\x1b[C", 2, []string{"A", "B", "D", "C"}, false},
+			{b, "\x01\x1bOC", 3, []string{"A", "B", "C", "D"}, false},
+			{a, "\x01\x1b[D", 2, []string{"A", "B", "D", "C"}, false},
+		} {
+			if step.split {
+				for j := range len(step.keys) {
+					step.client.write(step.keys[j : j+1])
+				}
+			} else {
+				step.client.write(step.keys)
+			}
+			step.client.command(fmt.Sprintf("printf 'window-%%s moved-%%s\\n' \"$TOKEN\" %d", i), fmt.Sprintf("window-D moved-%d", i))
+			expect(step.active, step.labels...)
+		}
+		labels := []string{"A", "B", "D", "C"}
+		a.write("\x01n")
+		expect(3, labels...)
+		a.write("\x01p")
+		expect(2, labels...)
+		for number, label := range labels {
+			a.write("\x01" + strconv.Itoa(number))
+			expect(number, labels...)
+			a.command("printf 'identity-%s:%s\\n' \"$TOKEN\" $$", "identity-"+label+":"+pids[label])
+		}
+		a.write("\x01\"")
+		a.await("bs - Windows")
+		for number, label := range labels {
+			prefix, suffix := "  ", ""
+			if number == 0 {
+				prefix = "> "
+			}
+			if number == 3 {
+				suffix = " *"
+			}
+			a.awaitRow(number+1, fmt.Sprintf("%s%d  order-%s%s", prefix, number, label, suffix))
+		}
+		a.write("\x1b[B\x1b[B\r")
+		expect(2, labels...)
+		a.write("\x01c")
+		create("E")
+		expect(4, "A", "B", "D", "C", "E")
+		a.write("\x011")
+		expect(1, "A", "B", "D", "C", "E")
+		a.write("\x01k")
+		expect(1, "A", "D", "C", "E")
+		for _, c := range []*terminalClient{a, b} {
+			c.write("\x01d")
+			c.exited()
+		}
+		a = h.client(80, 16, "-r", "move")
+		a.await("window-D")
+		b = h.client(80, 16, "-x", "move")
+		expect(1, "A", "D", "C", "E")
+		a.write("\x01|")
+		create("right")
+		a.border(39, 2, '│')
+		a.write("\x01\x1b[C")
+		expect(2, "A", "C", "right", "E")
+		for _, c := range []*terminalClient{a, b} {
+			c.border(39, 2, '│')
+			require.Contains(t, c.region(0, 0, 39, 15), "window-D")
+			require.Contains(t, c.region(40, 0, 40, 15), "window-right")
+		}
+		a.command("printf 'identity-%s:%s\\n' \"$TOKEN\" $$", "identity-right:"+pids["right"])
+		a.write("\x01\t")
+		expect(2, "A", "C", "D", "E")
+		a.command("printf 'identity-%s:%s\\n' \"$TOKEN\" $$", "identity-D:"+pids["D"])
+	})
+
+	t.Run("window-reordering-preserves-scrollback", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(80, 12, "-S", "move-history")
+		a.await("bs$ ")
+		a.command("printf '\\033]2;first\\007first-%s\\n' window", "first-window")
+		a.write("\x01c")
+		a.command("printf '\\033]2;second\\007'; i=0; while [ \"$i\" -lt 60 ]; do printf 'history-%03d\\n' \"$i\"; i=$((i+1)); done", "history-059")
+		b := h.client(80, 12, "-x", "move-history")
+		b.await("history-059")
+		b.write("\x01\x1b\x1b[5~")
+		b.await("history-040")
+		history := b.region(0, 0, 80, 11)
+		for _, step := range []struct {
+			keys   string
+			active int
+			titles []string
+		}{
+			{"\x01\x1b[D", 0, []string{"second", "first"}},
+			{"\x01\x1b[C", 1, []string{"first", "second"}},
+			{"\x01\x1b[C", 0, []string{"second", "first"}},
+			{"\x01\x1b[D", 1, []string{"first", "second"}},
+		} {
+			a.write(step.keys)
+			for _, c := range []*terminalClient{a, b} {
+				c.awaitRow(11, defaultStatusRow(80, "move-history", step.titles...))
+				c.pickerColors(11, step.active, 2)
+			}
+			require.Equal(t, history, b.region(0, 0, 80, 11))
+			a.await("history-059")
+			b.absent("history-059")
+		}
+		b.write("\x1b")
+		b.await("history-059")
+	})
+
 	t.Run("space-next-window-binding", func(t *testing.T) {
 		h := newHarness(t, bin)
 		a := h.client(80, 16, "-S", "space")

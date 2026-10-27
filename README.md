@@ -89,6 +89,7 @@ to switch windows.
 | `c` | Create window |
 | `n` / `Space` | Next window |
 | `p` | Previous window |
+| `Left` / `Right` | Move current window left/right and renumber windows |
 | `0`-`9` | Select numbered window |
 | `"` | Window list |
 | `s` | Session switcher |
@@ -106,6 +107,7 @@ to switch windows.
 
 Menus use arrow keys, Enter to select and Esc to cancel. Session switching
 affects only your client; window selection and pane focus are shared.
+Reordering keeps the same window selected and wraps around at either end of the list.
 Scrollback uses Up/Down and Page Up/Page Down (or Ctrl-U/Ctrl-D); Esc returns to live output.
 Text selection and clipboard copying are not implemented.
 

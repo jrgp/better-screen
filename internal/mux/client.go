@@ -278,13 +278,22 @@ func (c *client) input(data []byte) (bool, error) {
 	for _, b := range data {
 		if c.mode == "prefix" {
 			c.keys += string(b)
-			if c.keys == "\x1b[" {
+			if c.keys == "\x1b[" || c.keys == "\x1bO" {
 				continue
 			}
 			key := c.keys
 			c.mode, c.keys = "", ""
-			if key == "\x1b[Z" {
-				if err := c.send(request{Op: "pane-prev"}); err != nil {
+			op := ""
+			switch key {
+			case "\x1b[Z":
+				op = "pane-prev"
+			case "\x1b[D", "\x1bOD":
+				op = "move-left"
+			case "\x1b[C", "\x1bOC":
+				op = "move-right"
+			}
+			if op != "" {
+				if err := c.send(request{Op: op}); err != nil {
 					return false, err
 				}
 			} else {
@@ -480,7 +489,7 @@ func (c *client) draw() error {
 				lines = append(lines, fmt.Sprintf("%s%d  %s%s", prefix, w.Number, cleanText(w.Title), current))
 			}
 		} else {
-			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration   B  broadcast input", "a  literal Ctrl-A    ?  help"}
+			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "Left/Right  reorder current window", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration   B  broadcast input", "a  literal Ctrl-A    ?  help"}
 		}
 		// Scroll menus within the available rows, keeping the selection visible.
 		start := max(0, c.choice-max(0, c.rows-4))

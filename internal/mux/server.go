@@ -527,6 +527,19 @@ func (s *Server) handle(p *peer, r request) {
 				session.selected = r.Number
 			}
 			s.resetViews(session)
+		case "move-left", "move-right":
+			target := (session.selected + len(session.windows) - 1) % len(session.windows)
+			if r.Op == "move-right" {
+				target = (session.selected + 1) % len(session.windows)
+			}
+			if target < session.selected {
+				copy(session.windows[target+1:session.selected+1], session.windows[target:session.selected])
+			} else {
+				copy(session.windows[session.selected:target], session.windows[session.selected+1:target+1])
+			}
+			session.windows[target] = w
+			session.selected = target
+			session.dirty = true
 		case "fit":
 			if !validSize(r.Cols, r.Rows) {
 				s.fail(p, fmt.Errorf("terminal size out of range"))
