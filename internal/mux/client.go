@@ -400,9 +400,9 @@ func (c *client) menuKey(b byte) error {
 	} else if key == "\x1b[5" || key == "\x1b[6" {
 		c.keys = key
 		return nil
-	} else if key == "\x1b[5~" && c.mode == "scroll" {
+	} else if (key == "\x1b[5~" || key == "\x15") && c.mode == "scroll" {
 		return c.send(request{Op: "scroll", Number: max(1, c.rows-1)})
-	} else if key == "\x1b[6~" && c.mode == "scroll" {
+	} else if (key == "\x1b[6~" || key == "\x04") && c.mode == "scroll" {
 		return c.send(request{Op: "scroll", Number: -max(1, c.rows-1)})
 	} else if key == "\r" || key == "\n" {
 		var err error

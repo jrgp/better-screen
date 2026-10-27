@@ -106,7 +106,7 @@ to switch windows.
 
 Menus use arrow keys, Enter to select and Esc to cancel. Session switching
 affects only your client; window selection and pane focus are shared.
-Scrollback uses Up/Down and Page Up/Page Down; Esc returns to live output.
+Scrollback uses Up/Down and Page Up/Page Down (or Ctrl-U/Ctrl-D); Esc returns to live output.
 Text selection and clipboard copying are not implemented.
 
 Broadcast is off by default. When enabled, normal input (including Enter,
