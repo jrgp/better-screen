@@ -66,7 +66,8 @@ falling back to `$HOME` if it no longer exists.
 
 ### Keys
 
-Press **Ctrl-A**, release it, then:
+Press **Ctrl-A**, then a key below. You can keep Ctrl held when pressing Space
+to switch windows.
 
 | Key | Action |
 |---|---|

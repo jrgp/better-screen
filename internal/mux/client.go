@@ -304,7 +304,7 @@ func (c *client) input(data []byte) (bool, error) {
 				op = "split-h"
 			case '\t':
 				op = "pane-next"
-			case 'n', ' ', 14:
+			case 'n', ' ', 0, 14:
 				op = "next"
 			case 'p', 16:
 				op = "prev"

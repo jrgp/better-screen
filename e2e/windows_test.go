@@ -20,6 +20,7 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		a := h.client(80, 16, "-S", "space")
 		a.await("bs$ ")
 		a.write("\x01 ")
+		a.write("\x01\x00")
 		a.command("printf 'single-%s\\n' window", "single-window")
 		for number := range 3 {
 			if number > 0 {
@@ -32,7 +33,8 @@ func runWindowLifecycle(t *testing.T, bin string) {
 		for _, step := range []struct {
 			keys string
 			want int
-		}{{"\x01 ", 0}, {"\x01n", 1}, {"\x01 ", 2}, {"\x01 ", 0}, {"\x01p", 2}} {
+		}{{"\x01 ", 0}, {"\x01n", 1}, {"\x01 ", 2}, {"\x01 ", 0}, {"\x01p", 2},
+			{"\x01\x00", 0}, {"\x01\x00", 1}, {"\x01\x00", 2}} {
 			for i := range len(step.keys) {
 				a.write(step.keys[i : i+1])
 			}
@@ -40,6 +42,11 @@ func runWindowLifecycle(t *testing.T, bin string) {
 				c.await(fmt.Sprintf("window-%d", step.want))
 				c.pickerColors(15, step.want, 3)
 			}
+		}
+		a.write("\x01\x00")
+		for _, c := range []*terminalClient{a, b} {
+			c.await("window-0")
+			c.pickerColors(15, 0, 3)
 		}
 		a.command("printf 'normal-%s\\n' 'space preserved'", "normal-space preserved")
 		b.await("normal-space preserved")
