@@ -8,9 +8,19 @@
 A GNU Screen-style terminal multiplexer for Linux and macOS. Keep shells and
 full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 
+## Why
+
+I've used GNU Screen every day for the past 20 years. My workflow is always to have one screen session per project/repo, with the first window used for vim and the subsequent windows used for shells. 
+
+I wanted a few more features, such as broadcast mode and the ability to switch between sessions without detaching and reattaching, and I never had any interest in learning tmux.
+
+With the newly released self-contained libghostty VT core, and the ability to leverage AI to rapidly make arbitrary ideas come to life, I decided to guide GPT-6.1 Sol to build a screen-alike program for explicitly my workflow, leaving out all functionality I don't use like rs232 support and vbell.
+
+I chose Go because it's the statically-compiled language I know best and am most comfortable code reviewing en-masse (like I do at my day job), and because it had readymade standalone bindings for libghostty. This allows single-file compiled distribution. 
+
 ## Features
 
-* Named sessions and numbered windows, with automatic daemon startup.
+* Named sessions and numbered windows
 * Nested horizontal/vertical splits and independent shells in each pane.
 * Multi-attach with shared window selection, layouts and pane focus.
 * Launch commands in separate panes and toggle per-window input broadcasting.
@@ -20,7 +30,7 @@ full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 
 ## Install
 
-Download a standalone executable: no Go, Zig or Ghostty installation is needed.
+BS is distributed as a single-file Go binary linked only against libc.
 
 ### Linux amd64
 
