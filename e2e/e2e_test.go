@@ -465,6 +465,7 @@ func TestE2E(t *testing.T) {
 	runUnicode(t, bin)
 	runWorkingDirectories(t, bin)
 	runStatusTemplates(t, bin)
+	runColors(t, bin)
 	runConfigReload(t, bin)
 	runBroadcastPanes(t, bin)
 	runFinish(t, bin)

@@ -18,12 +18,12 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 	return w.text.Write(p)
 }
 
-func statusText(text string) string {
+func statusText(text, highlight string) string {
 	var out strings.Builder
 	for len(text) > 0 {
 		seq, _, n, _ := ansi.DecodeSequence(text, 0, nil)
 		text = text[n:]
-		if seq == accent || seq == "\x1b[39m" {
+		if seq == highlight || seq == "\x1b[39m" || seq == "\x1b[39;49m" {
 			out.WriteString(seq)
 		} else {
 			out.WriteString(cleanText(seq))
@@ -47,7 +47,7 @@ func (config Config) statusLine(windows []windowInfo, name string, cols int) (st
 		if err := t.Execute(&out, data); err != nil {
 			return "", fmt.Errorf("%s: %w", t.Name(), err)
 		}
-		sections[i] = statusText(out.text.String())
+		sections[i] = statusText(out.text.String(), config.activeTabStyle)
 	}
 	right := ansi.Truncate(sections[2], cols, "")
 	rightX := cols - ansi.StringWidth(right)

@@ -681,8 +681,6 @@ func (s *Server) windowInfos(session *session) []windowInfo {
 	return result
 }
 
-const accent = "\x1b[38;2;135;206;250m"
-
 func (s *Server) contentRows(rows int) int {
 	if *s.config.StatusLine {
 		return rows - 1

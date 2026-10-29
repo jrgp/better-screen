@@ -276,7 +276,7 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 				break
 			}
 			if cell != 0 {
-				f.Lines[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s%c\x1b[0m", x+1, accent, borderGlyph(w.borders, x, y))
+				f.Lines[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s%c\x1b[0m", x+1, s.config.borderStyle, borderGlyph(w.borders, x, y))
 			}
 		}
 	}

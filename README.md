@@ -174,6 +174,34 @@ Configuration loads when the daemon starts. After editing it, press **Ctrl-A R**
 (uppercase R) to reload it for all sessions without restarting. Invalid
 configuration leaves the previous settings in place and shows an error.
 
+Colors accept HTML hex RGB (`#RRGGBB` or `#RGB`, case-insensitive):
+
+```json
+{
+  "border_color": "#87cefa",
+  "status_active_tab_color": "#87cefa",
+  "status_active_tab_bg": ""
+}
+```
+
+These are the defaults: accent-colored pane borders and active-tab text, with
+no active-tab background. Set `status_active_tab_bg` to a hex color to fill the
+active tab, or `""` to clear it. For white text on the accent background, use
+`"status_active_tab_color": "#ffffff"` and `"status_active_tab_bg": "#87cefa"`.
+Set `status_active_tab_color` to `""` to leave the foreground unchanged; omitting
+the key still uses the default accent color.
+
+For example, a Nord-like theme:
+
+```json
+{
+  "border_color": "#4c566a",
+  "status_active_tab_color": "#81a1c1"
+}
+```
+
+Ctrl-A R applies color changes immediately to all attached clients.
+
 ### Build and release
 
 ```sh

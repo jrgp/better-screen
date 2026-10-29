@@ -36,7 +36,8 @@ func TestStatusCellBounds(t *testing.T) {
 }
 
 func TestStatusControlFiltering(t *testing.T) {
+	const accent = "\x1b[38;2;135;206;250m"
 	input := "safe\x1b[2J\x1b[?1049l\x1b]52;c;evil\a\x1bPpayload\x1b\\\r\n\t\b\x00\x7f\u0085" +
 		accent + "active\x1b[39m" + "\x1b[31mplain\x1b[0m\x1b["
-	require.Equal(t, "safe"+accent+"active\x1b[39mplain", statusText(input))
+	require.Equal(t, "safe"+accent+"active\x1b[39mplain", statusText(input, accent))
 }
