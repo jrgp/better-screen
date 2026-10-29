@@ -19,7 +19,7 @@ type Config struct {
 	statusTemplates  [3]*template.Template
 }
 
-const defaultStatusLeft = `{{ range .Windows }}{{ if .Active }}{{ highlight (printf "%d:%s" .Number .Title) }}{{ else }}{{ .Number }}:{{ .Title }}{{ end }} {{ end }}`
+const defaultStatusLeft = `{{ range .Windows }}{{ if .Active }}{{ highlight (printf "[%s]" .Title) }}{{ else }}[{{ .Title }}]{{ end }} {{ end }}`
 
 func loadConfig(home string) (Config, error) {
 	// Omitted fields keep their defaults; explicit null values become nil.
