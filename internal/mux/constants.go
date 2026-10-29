@@ -1,5 +1,18 @@
 package mux
 
+import "github.com/charmbracelet/x/ansi"
+
+// Input uses 7-bit prefixes; ansi.CSI and ansi.SS3 are 8-bit controls.
+const (
+	escape = string(rune(ansi.ESC))
+	csi    = escape + "["
+	ss3    = escape + "O"
+
+	// x/ansi has no helpers for saving and restoring DEC private modes.
+	saveUnicodeCore    = csi + "?2027s"
+	restoreUnicodeCore = csi + "?2027r"
+)
+
 const (
 	opAttach          = "attach"
 	opBroadcast       = "broadcast"

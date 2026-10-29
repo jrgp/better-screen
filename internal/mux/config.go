@@ -8,9 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -71,7 +71,7 @@ func loadConfig(home string) (Config, error) {
 	if config.StatusLine == nil {
 		return Config{}, fmt.Errorf("%s: status_line must be a boolean", path)
 	}
-	var colors []string
+	var colors ansi.Style
 	for i, setting := range []struct {
 		name  string
 		value *string
@@ -91,15 +91,16 @@ func loadConfig(home string) (Config, error) {
 			return Config{}, fmt.Errorf("%s: %s: %w", path, setting.name, err)
 		}
 		r, g, b := color.RGB255()
-		code := 38
+		rgb := ansi.RGBColor{R: r, G: g, B: b}
+		style := ansi.NewStyle().ForegroundColor(rgb)
 		if i == 2 {
-			code = 48
+			style = ansi.NewStyle().BackgroundColor(rgb)
 		}
-		colors = append(colors, fmt.Sprintf("%d;2;%d;%d;%d", code, r, g, b))
+		colors = append(colors, style...)
 	}
-	config.borderStyle = "\x1b[" + colors[0] + "m"
+	config.borderStyle = colors[:1].String()
 	if len(colors) > 1 {
-		config.activeTabStyle = "\x1b[" + strings.Join(colors[1:], ";") + "m"
+		config.activeTabStyle = colors[1:].String()
 	}
 	names := []string{"status_line_left", "status_line_center", "status_line_right"}
 	texts := []*string{config.StatusLineLeft, config.StatusLineCenter, config.StatusLineRight}
@@ -108,7 +109,10 @@ func loadConfig(home string) (Config, error) {
 			return Config{}, fmt.Errorf("%s: %s must be a string", path, name)
 		}
 		t, err := template.New(name).Option("missingkey=error").Funcs(template.FuncMap{
-			"highlight": func(text string) string { return config.activeTabStyle + cleanText(text) + "\x1b[39;49m" },
+			"highlight": func(text string) string {
+				return config.activeTabStyle + cleanText(text) +
+					ansi.SGR(ansi.AttrDefaultForegroundColor, ansi.AttrDefaultBackgroundColor)
+			},
 		}).Parse(*texts[i])
 		if err != nil {
 			return Config{}, fmt.Errorf("%s: %w", path, err)

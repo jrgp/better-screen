@@ -55,7 +55,7 @@ func writeSessionNotice(out io.Writer, name string, exited bool) error {
 	if exited {
 		message = "session " + cleanText(name) + " exited"
 	}
-	_, err := fmt.Fprintf(out, "\r\x1b[2K[bs: %s]\r\n", message)
+	_, err := fmt.Fprintf(out, "\r%s[bs: %s]\r\n", ansi.EraseEntireLine, message)
 	return err
 }
 
@@ -92,13 +92,23 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	if _, err := io.WriteString(out, "\x1b[?2027s\x1b[?1049h"); err != nil {
+	if _, err := io.WriteString(out, saveUnicodeCore+ansi.SetModeAltScreenSaveCursor); err != nil {
 		return errors.Join(err, term.Restore(int(in.Fd()), state))
 	}
 	var completion *response
 	defer func() {
 		// Clear bs's alternate screen, not the caller's restored primary screen.
-		_, clearErr := io.WriteString(out, "\x1b[0m\x1b[?1l\x1b>\x1b[?5l\x1b[?7h\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h\x1b[0 q\x1b[?6l\x1b[?69l\x1b[r\x1b[H\x1b[2J\x1b[?1049l\x1b[?2027r")
+		_, clearErr := io.WriteString(out,
+			ansi.SGR(ansi.AttrReset)+ansi.ResetModeCursorKeys+ansi.KeypadNumericMode+
+				ansi.ResetMode(ansi.DECMode(5))+ansi.SetModeAutoWrap+
+				ansi.ResetModeMouseX10+ansi.ResetModeMouseNormal+
+				ansi.ResetModeMouseButtonEvent+ansi.ResetModeMouseAnyEvent+
+				ansi.ResetModeFocusEvent+ansi.ResetModeMouseExtUtf8+
+				ansi.ResetModeMouseExtSgr+ansi.ResetModeMouseExtUrxvt+
+				ansi.ResetModeBracketedPaste+ansi.ShowCursor+ansi.SetCursorStyle(0)+
+				ansi.ResetModeOrigin+ansi.ResetModeLeftRightMargin+
+				ansi.SetTopBottomMargins(0, 0)+ansi.CursorHomePosition+
+				ansi.EraseEntireScreen+ansi.ResetModeAltScreenSaveCursor+restoreUnicodeCore)
 		restoreErr := term.Restore(int(in.Fd()), state)
 		var noticeErr error
 		if completion != nil {
@@ -184,7 +194,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 				}
 				continue
 			}
-			if c.keys == "\x1b" || c.mode == "prefix" {
+			if c.keys == escape || c.mode == "prefix" {
 				escapeAt = time.Now()
 			}
 			if err := c.draw(); err != nil {
@@ -239,7 +249,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 			return err
 		case <-tick.C:
 			changed := false
-			if (c.keys == "\x1b" || c.mode == "prefix") && time.Since(escapeAt) > 100*time.Millisecond {
+			if (c.keys == escape || c.mode == "prefix") && time.Since(escapeAt) > 100*time.Millisecond {
 				op := opLive
 				if c.mode == "prefix" {
 					c.mode, op = "scroll", opScroll
@@ -278,18 +288,18 @@ func (c *client) input(data []byte) (bool, error) {
 	for _, b := range data {
 		if c.mode == "prefix" {
 			c.keys += string(b)
-			if c.keys == "\x1b[" || c.keys == "\x1bO" {
+			if c.keys == csi || c.keys == ss3 {
 				continue
 			}
 			key := c.keys
 			c.mode, c.keys = "", ""
 			op := ""
 			switch key {
-			case "\x1b[Z":
+			case ansi.CursorBackwardTab(1):
 				op = opPanePrev
-			case "\x1b[D", "\x1bOD":
+			case ansi.CursorLeft1, ss3 + "D":
 				op = opMoveLeft
-			case "\x1b[C", "\x1bOC":
+			case ansi.CursorRight1, ss3 + "C":
 				op = opMoveRight
 			}
 			if op != "" {
@@ -365,8 +375,8 @@ func (c *client) input(data []byte) (bool, error) {
 				c.mode = map[byte]string{'s': "sessions", '"': "windows", '?': "help"}[b]
 				c.choice, c.previous = 0, nil
 				op = opCatalog
-			case 27:
-				c.mode, c.keys = "prefix", "\x1b"
+			case ansi.ESC:
+				c.mode, c.keys = "prefix", escape
 			default:
 				if b >= '0' && b <= '9' {
 					if err := c.send(request{Op: opSelect, Number: int(b - '0')}); err != nil {
@@ -394,26 +404,26 @@ func (c *client) input(data []byte) (bool, error) {
 func (c *client) menuKey(b byte) error {
 	c.keys += string([]byte{b})
 	key := c.keys
-	if key == "\x1b" || key == "\x1b[" || key == "\x1bO" {
+	if key == escape || key == csi || key == ss3 {
 		return nil
 	}
 	c.keys = ""
-	if key == "\x1b[A" || key == "\x1bOA" || key == "k" {
+	if key == ansi.CursorUp1 || key == ss3+"A" || key == "k" {
 		if c.mode == "scroll" {
 			return c.send(request{Op: opScroll, Number: 1})
 		}
 		c.choice = max(0, c.choice-1)
-	} else if key == "\x1b[B" || key == "\x1bOB" || key == "j" {
+	} else if key == ansi.CursorDown1 || key == ss3+"B" || key == "j" {
 		if c.mode == "scroll" {
 			return c.send(request{Op: opScroll, Number: -1})
 		}
 		c.choice = min(max(0, c.menuCount()-1), c.choice+1)
-	} else if key == "\x1b[5" || key == "\x1b[6" {
+	} else if key == csi+"5" || key == csi+"6" {
 		c.keys = key
 		return nil
-	} else if (key == "\x1b[5~" || key == "\x15") && c.mode == "scroll" {
+	} else if (key == csi+"5~" || key == "\x15") && c.mode == "scroll" {
 		return c.send(request{Op: opScroll, Number: max(1, c.rows-1)})
-	} else if (key == "\x1b[6~" || key == "\x04") && c.mode == "scroll" {
+	} else if (key == csi+"6~" || key == "\x04") && c.mode == "scroll" {
 		return c.send(request{Op: opScroll, Number: -max(1, c.rows-1)})
 	} else if key == "\r" || key == "\n" {
 		var err error
@@ -429,7 +439,7 @@ func (c *client) menuKey(b byte) error {
 		}
 		c.mode, c.previous = "", nil
 		return err
-	} else if strings.HasPrefix(key, "\x1b") || key == "q" {
+	} else if strings.HasPrefix(key, escape) || key == "q" {
 		c.mode, c.previous = "", nil
 		return c.send(request{Op: opLive})
 	}

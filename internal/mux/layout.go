@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/jrgp/bs/internal/vt"
 )
@@ -233,6 +234,8 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 		return vt.Frame{}, err
 	}
 	f := vt.Frame{Lines: make([]string, p.rows)}
+	reset := ansi.SGR(ansi.AttrReset)
+	reverse := ansi.SGR(ansi.AttrReverse)
 	for _, pane := range w.root.panes() {
 		r := pane.bounds
 		cols, rows := min(r.cols, p.cols-r.x), min(r.rows, s.contentRows(p.rows)-r.y)
@@ -258,13 +261,13 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 		}
 		for y, line := range part.Lines {
 			// Ghostty may position text with CUF, so string width cannot locate its end.
-			segment := fmt.Sprintf("\x1b[%dG\x1b[0m%s", r.x+1, part.Style)
-			if strings.HasPrefix(part.Style, "\x1b[7m") {
-				segment += strings.Repeat(" ", cols) + fmt.Sprintf("\x1b[%dG", r.x+1)
+			segment := ansi.CursorHorizontalAbsolute(r.x+1) + reset + part.Style
+			if strings.HasPrefix(part.Style, reverse) {
+				segment += strings.Repeat(" ", cols) + ansi.CursorHorizontalAbsolute(r.x+1)
 			} else {
-				segment += fmt.Sprintf("\x1b[%dX", cols)
+				segment += ansi.EraseCharacter(cols)
 			}
-			f.Lines[r.y+y] += segment + line + "\x1b[0m"
+			f.Lines[r.y+y] += segment + line + reset
 		}
 	}
 	for y, row := range w.borders {
@@ -276,7 +279,8 @@ func (s *Server) capture(p *peer) (vt.Frame, error) {
 				break
 			}
 			if cell != 0 {
-				f.Lines[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s%c\x1b[0m", x+1, s.config.borderStyle, borderGlyph(w.borders, x, y))
+				f.Lines[y] += ansi.CursorHorizontalAbsolute(x+1) + reset +
+					s.config.borderStyle + string(borderGlyph(w.borders, x, y)) + reset
 			}
 		}
 	}

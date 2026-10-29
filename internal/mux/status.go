@@ -20,10 +20,12 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 
 func statusText(text, highlight string) string {
 	var out strings.Builder
+	foregroundReset := ansi.SGR(ansi.AttrDefaultForegroundColor)
+	colorReset := ansi.SGR(ansi.AttrDefaultForegroundColor, ansi.AttrDefaultBackgroundColor)
 	for len(text) > 0 {
 		seq, _, n, _ := ansi.DecodeSequence(text, 0, nil)
 		text = text[n:]
-		if seq == highlight || seq == "\x1b[39m" || seq == "\x1b[39;49m" {
+		if seq == highlight || seq == foregroundReset || seq == colorReset {
 			out.WriteString(seq)
 		} else {
 			out.WriteString(cleanText(seq))
@@ -69,7 +71,8 @@ func (config Config) statusLine(windows []windowInfo, name string, cols int) (st
 	if center == "" {
 		start = leftWidth
 	}
-	return "\x1b[?2027h\x1b[0m" + left + "\x1b[0m" +
-		strings.Repeat(" ", start-leftWidth) + center + "\x1b[0m" +
-		strings.Repeat(" ", rightX-start-ansi.StringWidth(center)) + right + "\x1b[0m", nil
+	reset := ansi.SGR(ansi.AttrReset)
+	return ansi.SetModeUnicodeCore + reset + left + reset +
+		strings.Repeat(" ", start-leftWidth) + center + reset +
+		strings.Repeat(" ", rightX-start-ansi.StringWidth(center)) + right + reset, nil
 }

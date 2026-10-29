@@ -73,15 +73,15 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 		return Frame{}, err
 	}
 	if reverse {
-		f.Style = "\x1b[7m"
+		f.Style = ansi.SGR(ansi.AttrReverse)
 	}
 	graphemes, err := t.Mode(ghostty.NewMode(2027, false))
 	if err != nil {
 		return Frame{}, err
 	}
-	widthMode := "\x1b[?2027l"
+	widthMode := ansi.ResetModeUnicodeCore
 	if graphemes {
-		widthMode = "\x1b[?2027h"
+		widthMode = ansi.SetModeUnicodeCore
 	}
 	palette, err := t.ColorPalette()
 	if err != nil {
@@ -122,7 +122,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 			}
 			value := fmt.Sprintf("%s;2;%d;%d;%d", channel, color.R, color.G, color.B)
 			defaults[item.code] = value
-			f.Style += "\x1b[" + value + "m"
+			f.Style += ansi.Style{value}.String()
 		}
 	}
 	for y := range rows {
@@ -214,19 +214,21 @@ func Draw(previous *Frame, f Frame) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\x1b[?25l\x1b[?7l\x1b[?2027h\x1b[0m")
+	reset := ansi.SGR(ansi.AttrReset)
+	b.WriteString(ansi.HideCursor + ansi.ResetModeAutoWrap + ansi.SetModeUnicodeCore + reset)
 	if previous == nil {
-		b.WriteString("\x1b[?6l\x1b[?69l\x1b[r\x1b[2J")
+		b.WriteString(ansi.ResetModeOrigin + ansi.ResetModeLeftRightMargin +
+			ansi.SetTopBottomMargins(0, 0) + ansi.EraseEntireScreen)
 	}
 	for y, line := range f.Lines {
 		if previous != nil && previous.Style == f.Style && y < len(previous.Lines) && line == previous.Lines[y] {
 			continue
 		}
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m%s\x1b[2K%s", y+1, f.Style, line)
+		b.WriteString(ansi.CursorPosition(1, y+1) + reset + f.Style + ansi.EraseEntireLine + line)
 	}
 	if previous != nil {
 		for y := len(f.Lines); y < len(previous.Lines); y++ {
-			fmt.Fprintf(&b, "\x1b[%d;1H\x1b[0m\x1b[2K", y+1)
+			b.WriteString(ansi.CursorPosition(1, y+1) + reset + ansi.EraseEntireLine)
 		}
 	}
 	for _, mode := range []int{1, 5, 9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004} {
@@ -239,22 +241,22 @@ func Draw(previous *Frame, f Frame) string {
 				on = true
 			}
 		}
-		state := "l"
 		if on {
-			state = "h"
+			b.WriteString(ansi.SetMode(ansi.DECMode(mode)))
+		} else {
+			b.WriteString(ansi.ResetMode(ansi.DECMode(mode)))
 		}
-		fmt.Fprintf(&b, "\x1b[?%d%s", mode, state)
 	}
 	if previous == nil || previous.Keypad != f.Keypad {
 		if f.Keypad {
-			b.WriteString("\x1b=")
+			b.WriteString(ansi.KeypadApplicationMode)
 		} else {
-			b.WriteString("\x1b>")
+			b.WriteString(ansi.KeypadNumericMode)
 		}
 	}
-	fmt.Fprintf(&b, "\x1b[0m\x1b[%d q\x1b[%d;%dH", f.CursorStyle, f.Y+1, f.X+1)
+	b.WriteString(reset + ansi.SetCursorStyle(f.CursorStyle) + ansi.CursorPosition(f.X+1, f.Y+1))
 	if f.Visible {
-		b.WriteString("\x1b[?25h")
+		b.WriteString(ansi.ShowCursor)
 	}
 	return b.String()
 }
@@ -270,7 +272,7 @@ func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[s
 	for len(line) > 0 {
 		seq, _, n, _ := ansi.DecodeSequence(line, 0, nil)
 		line = line[n:]
-		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+		if ansi.HasCsiPrefix(seq) && seq[0] == ansi.ESC && strings.HasSuffix(seq, "m") {
 			params := strings.Split(seq[2:len(seq)-1], ";")
 			var result []string
 			for i := 0; i < len(params); i++ {
@@ -330,7 +332,7 @@ func resolveColors(line string, palette map[int]ghostty.ColorRGB, defaults map[s
 					result = append(result, value)
 				}
 			}
-			out.WriteString("\x1b[" + strings.Join(result, ";") + "m")
+			out.WriteString(ansi.Style(result).String())
 		} else {
 			out.WriteString(seq)
 		}
