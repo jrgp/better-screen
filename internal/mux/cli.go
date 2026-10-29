@@ -127,14 +127,14 @@ scan:
 	if _, err := loadConfig(home); err != nil {
 		return err
 	}
-	r := request{Version: protocolVersion, Op: "create", Name: *name, Force: *detach, Commands: commands}
+	r := request{Version: protocolVersion, Op: opCreate, Name: *name, Force: *detach, Commands: commands}
 	if *reattach != "" {
-		r.Op, r.Name = "attach", *reattach
+		r.Op, r.Name = opAttach, *reattach
 	}
 	if multiRequested {
-		r.Op, r.Name, r.Multi = "attach", *multi, true
+		r.Op, r.Name, r.Multi = opAttach, *multi, true
 	}
-	start := r.Op == "create" && !*list
+	start := r.Op == opCreate && !*list
 	if start {
 		r.Dir, err = os.Getwd()
 		if errors.Is(err, os.ErrNotExist) {
@@ -157,7 +157,7 @@ scan:
 	defer conn.Close()
 	if *list {
 		conn.SetDeadline(time.Now().Add(5 * time.Second))
-		r.Op = "list"
+		r.Op = opList
 		if err := send(conn, r); err != nil {
 			return err
 		}

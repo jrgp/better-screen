@@ -229,7 +229,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 				continue
 			}
 			c.cols, c.rows, c.previous = cols, rows, nil
-			if err := c.send(request{Op: "size", Cols: cols, Rows: rows}); err != nil {
+			if err := c.send(request{Op: opSize, Cols: cols, Rows: rows}); err != nil {
 				return err
 			}
 			if err := c.draw(); err != nil {
@@ -240,9 +240,9 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 		case <-tick.C:
 			changed := false
 			if (c.keys == "\x1b" || c.mode == "prefix") && time.Since(escapeAt) > 100*time.Millisecond {
-				op := "live"
+				op := opLive
 				if c.mode == "prefix" {
-					c.mode, op = "scroll", "scroll"
+					c.mode, op = "scroll", opScroll
 				} else {
 					c.mode = ""
 				}
@@ -271,7 +271,7 @@ func (c *client) input(data []byte) (bool, error) {
 		if len(plain) == 0 {
 			return nil
 		}
-		err := c.send(request{Op: "input", Data: plain})
+		err := c.send(request{Op: opInput, Data: plain})
 		plain = nil
 		return err
 	}
@@ -286,11 +286,11 @@ func (c *client) input(data []byte) (bool, error) {
 			op := ""
 			switch key {
 			case "\x1b[Z":
-				op = "pane-prev"
+				op = opPanePrev
 			case "\x1b[D", "\x1bOD":
-				op = "move-left"
+				op = opMoveLeft
 			case "\x1b[C", "\x1bOC":
-				op = "move-right"
+				op = opMoveRight
 			}
 			if op != "" {
 				if err := c.send(request{Op: op}); err != nil {
@@ -298,7 +298,7 @@ func (c *client) input(data []byte) (bool, error) {
 				}
 			} else {
 				c.mode, c.previous = "scroll", nil
-				if err := c.send(request{Op: "scroll"}); err != nil {
+				if err := c.send(request{Op: opScroll}); err != nil {
 					return false, err
 				}
 				for _, b := range []byte(key[1:]) {
@@ -328,48 +328,48 @@ func (c *client) input(data []byte) (bool, error) {
 			case 'a', 1:
 				plain = append(plain, 1)
 			case 'c':
-				op = "new"
+				op = opNew
 			case 'k':
-				op = "kill"
+				op = opKill
 			case 'K':
-				op = "pane-kill"
+				op = opPaneKill
 			case '|':
-				op = "split-v"
+				op = opSplitVertical
 			case 'S':
-				op = "split-h"
+				op = opSplitHorizontal
 			case '=':
-				op = "equalize"
+				op = opEqualize
 			case '\t':
-				op = "pane-next"
+				op = opPaneNext
 			case 'n', ' ', 0, 14:
-				op = "next"
+				op = opNext
 			case 'p', 16:
-				op = "prev"
+				op = opPrev
 			case 'R':
 				c.status = ""
-				op = "reload"
+				op = opReload
 			case 'B':
-				op = "broadcast"
+				op = opBroadcast
 			case 'd':
-				return true, c.send(request{Op: "detach"})
+				return true, c.send(request{Op: opDetach})
 			case 'F':
 				cols, rows, err := dimensions(c.tty)
 				if err != nil {
 					return false, err
 				}
 				c.cols, c.rows = cols, rows
-				if err := c.send(request{Op: "fit", Cols: cols, Rows: rows}); err != nil {
+				if err := c.send(request{Op: opFit, Cols: cols, Rows: rows}); err != nil {
 					return false, err
 				}
 			case 's', '"', '?':
 				c.mode = map[byte]string{'s': "sessions", '"': "windows", '?': "help"}[b]
 				c.choice, c.previous = 0, nil
-				op = "catalog"
+				op = opCatalog
 			case 27:
 				c.mode, c.keys = "prefix", "\x1b"
 			default:
 				if b >= '0' && b <= '9' {
-					if err := c.send(request{Op: "select", Number: int(b - '0')}); err != nil {
+					if err := c.send(request{Op: opSelect, Number: int(b - '0')}); err != nil {
 						return false, err
 					}
 				}
@@ -400,38 +400,38 @@ func (c *client) menuKey(b byte) error {
 	c.keys = ""
 	if key == "\x1b[A" || key == "\x1bOA" || key == "k" {
 		if c.mode == "scroll" {
-			return c.send(request{Op: "scroll", Number: 1})
+			return c.send(request{Op: opScroll, Number: 1})
 		}
 		c.choice = max(0, c.choice-1)
 	} else if key == "\x1b[B" || key == "\x1bOB" || key == "j" {
 		if c.mode == "scroll" {
-			return c.send(request{Op: "scroll", Number: -1})
+			return c.send(request{Op: opScroll, Number: -1})
 		}
 		c.choice = min(max(0, c.menuCount()-1), c.choice+1)
 	} else if key == "\x1b[5" || key == "\x1b[6" {
 		c.keys = key
 		return nil
 	} else if (key == "\x1b[5~" || key == "\x15") && c.mode == "scroll" {
-		return c.send(request{Op: "scroll", Number: max(1, c.rows-1)})
+		return c.send(request{Op: opScroll, Number: max(1, c.rows-1)})
 	} else if (key == "\x1b[6~" || key == "\x04") && c.mode == "scroll" {
-		return c.send(request{Op: "scroll", Number: -max(1, c.rows-1)})
+		return c.send(request{Op: opScroll, Number: -max(1, c.rows-1)})
 	} else if key == "\r" || key == "\n" {
 		var err error
 		switch c.mode {
 		case "sessions":
 			if c.choice < len(c.sessions) {
-				err = c.send(request{Op: "switch", Name: c.sessions[c.choice].Name, Cols: c.cols, Rows: c.rows})
+				err = c.send(request{Op: opSwitch, Name: c.sessions[c.choice].Name, Cols: c.cols, Rows: c.rows})
 			}
 		case "windows":
 			if c.choice < len(c.current.Windows) {
-				err = c.send(request{Op: "select", Number: c.current.Windows[c.choice].Number})
+				err = c.send(request{Op: opSelect, Number: c.current.Windows[c.choice].Number})
 			}
 		}
 		c.mode, c.previous = "", nil
 		return err
 	} else if strings.HasPrefix(key, "\x1b") || key == "q" {
 		c.mode, c.previous = "", nil
-		return c.send(request{Op: "live"})
+		return c.send(request{Op: opLive})
 	}
 	return nil
 }

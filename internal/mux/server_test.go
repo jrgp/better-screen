@@ -37,13 +37,13 @@ func TestDaemonLifecycle(t *testing.T) {
 	require.Eventually(t, func() bool { var err error; conn, err = dial(filepath.Join(home, ".bs")); return err == nil }, 5*time.Second, 10*time.Millisecond)
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	require.NoError(t, send(conn, request{Version: 1, Op: "create", Name: "work", Cols: 80, Rows: 24}))
+	require.NoError(t, send(conn, request{Version: 1, Op: opCreate, Name: "work", Cols: 80, Rows: 24}))
 	var result response
 	require.NoError(t, receive(conn, &result, maxMessage))
 	require.Empty(t, result.Error)
 	require.Equal(t, "work", result.Session)
 	require.NotNil(t, result.Frame)
-	require.NoError(t, send(conn, request{Version: 1, Op: "input", Data: []byte("printf '\\033[2J\\033[Hcore-ready'\n")}))
+	require.NoError(t, send(conn, request{Version: 1, Op: opInput, Data: []byte("printf '\\033[2J\\033[Hcore-ready'\n")}))
 	for {
 		require.NoError(t, receive(conn, &result, maxMessage))
 		require.Empty(t, result.Error)
@@ -61,9 +61,10 @@ func TestDaemonLifecycle(t *testing.T) {
 
 func TestProtocolAndNames(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, send(&buf, request{Version: 1, Op: "input", Data: []byte{0, 1, 255}}))
+	require.NoError(t, send(&buf, request{Version: 1, Op: opInput, Data: []byte{0, 1, 255}}))
 	var r request
 	require.NoError(t, receive(&buf, &r, maxRequest))
+	assert.Equal(t, opInput, r.Op)
 	assert.Equal(t, []byte{0, 1, 255}, r.Data)
 	require.ErrorContains(t, send(io.Discard, request{Commands: []string{string(make([]byte, maxRequest))}}), "IPC request exceeds")
 	require.NoError(t, binary.Write(&buf, binary.BigEndian, uint32(maxRequest+1)))

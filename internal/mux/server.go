@@ -363,20 +363,20 @@ func (s *Server) handle(p *peer, r request) {
 		return
 	}
 	switch r.Op {
-	case "list":
+	case opList:
 		s.reply(p, response{Sessions: s.infos(), Done: true})
-	case "catalog":
+	case opCatalog:
 		if p.session == nil {
 			s.fail(p, fmt.Errorf("not attached"))
 			return
 		}
 		s.reply(p, response{Sessions: s.infos(), Windows: s.windowInfos(p.session), Session: p.session.name})
-	case "create", "attach", "switch":
-		if r.Op != "switch" && p.session != nil {
+	case opCreate, opAttach, opSwitch:
+		if r.Op != opSwitch && p.session != nil {
 			s.fail(p, fmt.Errorf("already attached"))
 			return
 		}
-		if r.Op == "switch" && p.session == nil {
+		if r.Op == opSwitch && p.session == nil {
 			s.fail(p, fmt.Errorf("not attached"))
 			return
 		}
@@ -386,7 +386,7 @@ func (s *Server) handle(p *peer, r request) {
 		}
 		var target *session
 		var err error
-		if r.Op == "create" {
+		if r.Op == opCreate {
 			if len(s.sessions) >= maxSessions {
 				s.fail(p, fmt.Errorf("session limit reached"))
 				return
@@ -429,7 +429,7 @@ func (s *Server) handle(p *peer, r request) {
 			s.fail(p, err)
 			return
 		}
-		if r.Op == "attach" && !r.Multi && !r.Force {
+		if r.Op == opAttach && !r.Multi && !r.Force {
 			for other := range s.peers {
 				if other != p && other.session == target {
 					s.fail(p, fmt.Errorf("session %q is attached (use -x or -d -r)", target.name))
@@ -446,9 +446,9 @@ func (s *Server) handle(p *peer, r request) {
 		}
 		p.clearScroll()
 		p.session, p.cols, p.rows, p.force = target, r.Cols, r.Rows, true
-	case "detach":
+	case opDetach:
 		s.reply(p, response{Done: true})
-	case "size":
+	case opSize:
 		if !validSize(r.Cols, r.Rows) {
 			s.fail(p, fmt.Errorf("terminal size out of range"))
 			return
@@ -463,16 +463,16 @@ func (s *Server) handle(p *peer, r request) {
 		w := session.windows[session.selected]
 		focused := w.focused
 		switch r.Op {
-		case "broadcast":
+		case opBroadcast:
 			w.broadcast = !w.broadcast
 			session.dirty = true
-		case "reload":
+		case opReload:
 			if err := s.reloadConfig(); err != nil {
 				s.fail(p, fmt.Errorf("reload configuration: %w", err))
 			} else {
 				s.render()
 			}
-		case "input":
+		case opInput:
 			if len(r.Data) > 32768 {
 				s.fail(p, fmt.Errorf("input exceeds 32768 bytes"))
 				return
@@ -488,31 +488,31 @@ func (s *Server) handle(p *peer, r request) {
 					return
 				}
 			}
-		case "new":
+		case opNew:
 			if err := s.newWindow(session); err != nil {
 				s.fail(p, err)
 				return
 			}
 			s.resetViews(session)
-		case "kill":
+		case opKill:
 			s.removeWindow(session, session.selected)
-		case "pane-kill":
+		case opPaneKill:
 			s.paneEvent(event{pane: focused, exited: true})
-		case "split-v", "split-h":
-			if err := s.split(session, w, r.Op == "split-v"); err != nil {
+		case opSplitVertical, opSplitHorizontal:
+			if err := s.split(session, w, r.Op == opSplitVertical); err != nil {
 				s.fail(p, err)
 			}
-		case "equalize":
+		case opEqualize:
 			w.equalized = true
 			s.resetViews(session)
 			if err := s.resizeWindow(session, w); err != nil {
 				s.fail(p, err)
 			}
-		case "pane-next", "pane-prev":
+		case opPaneNext, opPanePrev:
 			panes := w.root.panes()
 			i := slices.Index(panes, focused)
 			step := 1
-			if r.Op == "pane-prev" {
+			if r.Op == opPanePrev {
 				step = -1
 			}
 			w.focused = panes[(i+len(panes)+step)%len(panes)]
@@ -520,13 +520,13 @@ func (s *Server) handle(p *peer, r request) {
 			if err := s.resizeWindow(session, w); err != nil {
 				s.fail(p, err)
 			}
-		case "next", "prev", "select":
+		case opNext, opPrev, opSelect:
 			switch r.Op {
-			case "next":
+			case opNext:
 				session.selected = (session.selected + 1) % len(session.windows)
-			case "prev":
+			case opPrev:
 				session.selected = (session.selected + len(session.windows) - 1) % len(session.windows)
-			case "select":
+			case opSelect:
 				if r.Number < 0 || r.Number >= len(session.windows) {
 					s.fail(p, fmt.Errorf("no window %d", r.Number))
 					return
@@ -534,9 +534,9 @@ func (s *Server) handle(p *peer, r request) {
 				session.selected = r.Number
 			}
 			s.resetViews(session)
-		case "move-left", "move-right":
+		case opMoveLeft, opMoveRight:
 			target := (session.selected + len(session.windows) - 1) % len(session.windows)
-			if r.Op == "move-right" {
+			if r.Op == opMoveRight {
 				target = (session.selected + 1) % len(session.windows)
 			}
 			if target < session.selected {
@@ -547,7 +547,7 @@ func (s *Server) handle(p *peer, r request) {
 			session.windows[target] = w
 			session.selected = target
 			session.dirty = true
-		case "fit":
+		case opFit:
 			if !validSize(r.Cols, r.Rows) {
 				s.fail(p, fmt.Errorf("terminal size out of range"))
 				return
@@ -561,7 +561,7 @@ func (s *Server) handle(p *peer, r request) {
 					return
 				}
 			}
-		case "scroll":
+		case opScroll:
 			if err := p.resolveScroll(focused.term); err != nil {
 				s.fail(p, err)
 				return
@@ -582,7 +582,7 @@ func (s *Server) handle(p *peer, r request) {
 				}
 			}
 			p.force = true
-		case "live":
+		case opLive:
 			p.clearScroll()
 			p.force = true
 		default:
