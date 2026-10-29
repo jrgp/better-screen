@@ -167,9 +167,7 @@ jobs:
           files: |
             dist/bs-linux-amd64
             dist/bs-darwin-arm64
-          body: |
-            Download the executable for your platform, run `chmod +x bs-*`, and launch it.
-            Ghostty is embedded; no Go, Zig or Ghostty installation is needed.
+          generate_release_notes: true
       - name: Verify uploaded assets and publish
         env:
           GH_TOKEN: ${{ github.token }}
