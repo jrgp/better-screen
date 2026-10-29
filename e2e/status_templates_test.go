@@ -117,8 +117,8 @@ func runStatusTemplates(t *testing.T, bin string) {
 		{"missing", "", defaultStatusRow(40, "work", "sh")},
 		{"empty-object", "{}", defaultStatusRow(40, "work", "sh")},
 		{"empty-left", `{"status_line_left":""}`, strings.Repeat(" ", 36) + "work"},
-		{"empty-right", `{"status_line_right":""}`, "0:sh " + strings.Repeat(" ", 35)},
-		{"center-only-override", `{"status_line_center":"C"}`, "0:sh " + strings.Repeat(" ", 14) + "C" + strings.Repeat(" ", 16) + "work"},
+		{"empty-right", `{"status_line_right":""}`, "[sh] " + strings.Repeat(" ", 35)},
+		{"center-only-override", `{"status_line_center":"C"}`, "[sh] " + strings.Repeat(" ", 14) + "C" + strings.Repeat(" ", 16) + "work"},
 		{"all-empty", `{"status_line_left":"","status_line_center":"","status_line_right":""}`, strings.Repeat(" ", 40)},
 	} {
 		t.Run("status-template-defaults-"+tc.name, func(t *testing.T) {

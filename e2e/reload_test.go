@@ -172,7 +172,7 @@ func runConfigReload(t *testing.T, bin string) {
 		path := filepath.Join(h.home, ".bs", "config.json")
 		for _, tc := range []struct{ config, row string }{
 			{`{"status_line_left":"","status_line_right":""}`, strings.Repeat(" ", 40)},
-			{`{"status_line_center":"","status_line_right":""}`, "0:sh " + strings.Repeat(" ", 35)},
+			{`{"status_line_center":"","status_line_right":""}`, "[sh] " + strings.Repeat(" ", 35)},
 			{`{"status_line_left":"","status_line_center":"C"}`, strings.Repeat(" ", 19) + "C" + strings.Repeat(" ", 12) + "defaults"},
 			{`{}`, defaultStatusRow(40, "defaults", "sh")},
 			{`{"status_line_left":"LAST","status_line_right":""}`, "LAST" + strings.Repeat(" ", 36)},

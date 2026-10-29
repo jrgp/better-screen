@@ -148,7 +148,7 @@ The status line is enabled by default. To disable it, put this in
 {"status_line": false}
 ```
 
-The default shows `number:title` for each window on the left and the session
+The default shows `[title]` for each window on the left and the session
 name on the right. Titles come from applications (OSC 0/2), with the shell name
 as a fallback; a split window shows its focused pane's title.
 
