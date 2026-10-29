@@ -10,6 +10,8 @@
 A GNU Screen-style terminal multiplexer for Linux and macOS. Keep shells and
 full-screen programs running across SSH disconnects, with familiar Ctrl-A keys.
 
+<img src="screenshots/splits.jpg" width="1000">
+
 ## Why
 
 I've used GNU Screen every day for the past 20 years. My workflow is always to have one screen session per project/repo, with the first window used for vim and the subsequent windows used for shells. 
