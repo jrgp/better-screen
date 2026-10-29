@@ -232,14 +232,9 @@ func Draw(previous *Frame, f Frame) string {
 		}
 	}
 	for _, mode := range []int{1, 5, 9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004} {
-		if previous != nil && slices.Contains(previous.Modes, mode) == slices.Contains(f.Modes, mode) {
+		on := slices.Contains(f.Modes, mode)
+		if previous != nil && slices.Contains(previous.Modes, mode) == on {
 			continue
-		}
-		on := false
-		for _, m := range f.Modes {
-			if m == mode {
-				on = true
-			}
 		}
 		if on {
 			b.WriteString(ansi.SetMode(ansi.DECMode(mode)))

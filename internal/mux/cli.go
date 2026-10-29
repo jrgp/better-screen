@@ -1,6 +1,7 @@
 package mux
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -38,10 +39,7 @@ func run(args []string, in, out *os.File, stderr io.Writer, buildVersion string)
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 		signal.Ignore(syscall.SIGHUP)
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/sh"
-		}
+		shell := cmp.Or(os.Getenv("SHELL"), "/bin/sh")
 		return NewServer(home, shell, log.New(stderr, "bs daemon: ", log.LstdFlags), config).Run(ctx)
 	}
 	flags := flag.NewFlagSet("bs", flag.ContinueOnError)

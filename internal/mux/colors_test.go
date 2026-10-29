@@ -47,6 +47,21 @@ func TestConfigColors(t *testing.T) {
 	}
 }
 
+func TestConfigColorChannels(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(home, ".bs"), 0700))
+	for r := range 256 {
+		g, b := 255-r, r^0x55
+		hex := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+		data := fmt.Sprintf(`{"border_color":%q,"status_active_tab_color":%q,"status_active_tab_bg":%q}`, hex, hex, hex)
+		require.NoError(t, os.WriteFile(filepath.Join(home, ".bs", "config.json"), []byte(data), 0600))
+		config, err := loadConfig(home)
+		require.NoError(t, err)
+		require.Equal(t, fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b), config.borderStyle, hex)
+		require.Equal(t, fmt.Sprintf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm", r, g, b, r, g, b), config.activeTabStyle, hex)
+	}
+}
+
 func TestConfigInvalidColors(t *testing.T) {
 	for _, key := range []string{"border_color", "status_active_tab_color", "status_active_tab_bg"} {
 		for _, value := range []string{

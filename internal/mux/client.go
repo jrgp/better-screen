@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -145,7 +146,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 			}
 			if n > 0 {
 				select {
-				case input <- append([]byte(nil), buf[:n]...):
+				case input <- slices.Clone(buf[:n]):
 				case <-done:
 					return
 				}
@@ -516,7 +517,7 @@ func (c *client) draw() error {
 		f.Keypad = false
 	}
 	if c.status != "" {
-		f.Lines = append([]string(nil), f.Lines...)
+		f.Lines = slices.Clone(f.Lines)
 		if len(f.Lines) > 0 {
 			f.Lines[len(f.Lines)-1] = ansi.Truncate("[bs: "+cleanText(c.status)+"]", c.cols, "")
 		}

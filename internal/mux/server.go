@@ -1,6 +1,7 @@
 package mux
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -404,16 +405,11 @@ func (s *Server) handle(p *peer, r request) {
 				s.fail(p, fmt.Errorf("session names must use 1..64 ASCII letters, digits, '.', '-' or '_'"))
 				return
 			}
-			for _, existing := range s.sessions {
-				if existing.name == r.Name {
-					s.fail(p, fmt.Errorf("session %q already exists", r.Name))
-					return
-				}
+			if slices.ContainsFunc(s.sessions, func(existing *session) bool { return existing.name == r.Name }) {
+				s.fail(p, fmt.Errorf("session %q already exists", r.Name))
+				return
 			}
-			dir := r.Dir
-			if dir == "" {
-				dir = s.home
-			}
+			dir := cmp.Or(r.Dir, s.home)
 			if !filepath.IsAbs(dir) {
 				s.fail(p, fmt.Errorf("session directory must be an absolute path"))
 				return
@@ -788,7 +784,7 @@ func (s *Server) newPane(session *session, cols, rows int, command string) (*pan
 	}
 	w := &pane{input: make(chan []byte, 64), done: make(chan struct{}), wait: make(chan struct{}), title: filepath.Base(s.shell)}
 	term, err := vt.New(cols, rows, ghostty.WithWritePty(func(_ *ghostty.Terminal, data []byte) {
-		if !s.queueInput(w, append([]byte(nil), data...)) {
+		if !s.queueInput(w, slices.Clone(data)) {
 			w.responseErr = fmt.Errorf("terminal response buffer full")
 		}
 	}))
@@ -812,7 +808,7 @@ func (s *Server) newPane(session *session, cols, rows int, command string) (*pan
 		buffer := make([]byte, 32768)
 		for {
 			n, err := w.pty.Read(buffer)
-			if n > 0 && !s.publish(event{pane: w, data: append([]byte(nil), buffer[:n]...)}) {
+			if n > 0 && !s.publish(event{pane: w, data: slices.Clone(buffer[:n])}) {
 				return
 			}
 			if err != nil {

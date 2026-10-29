@@ -90,11 +90,9 @@ func loadConfig(home string) (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("%s: %s: %w", path, setting.name, err)
 		}
-		r, g, b := color.RGB255()
-		rgb := ansi.RGBColor{R: r, G: g, B: b}
-		style := ansi.NewStyle().ForegroundColor(rgb)
+		style := ansi.NewStyle().ForegroundColor(color)
 		if i == 2 {
-			style = ansi.NewStyle().BackgroundColor(rgb)
+			style = ansi.NewStyle().BackgroundColor(color)
 		}
 		colors = append(colors, style...)
 	}
