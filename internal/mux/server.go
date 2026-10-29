@@ -603,7 +603,7 @@ func (s *Server) reloadConfig() error {
 	}
 	previous := s.config
 	s.config = config
-	if config.StatusLine != previous.StatusLine {
+	if *config.StatusLine != *previous.StatusLine {
 		resize := func() error {
 			var result error
 			for _, session := range s.sessions {
@@ -684,7 +684,7 @@ func (s *Server) windowInfos(session *session) []windowInfo {
 const accent = "\x1b[38;2;135;206;250m"
 
 func (s *Server) contentRows(rows int) int {
-	if s.config.StatusLine {
+	if *s.config.StatusLine {
 		return rows - 1
 	}
 	return rows

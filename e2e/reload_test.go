@@ -138,9 +138,9 @@ func runConfigReload(t *testing.T, bin string) {
 		other.awaitRow(11, "WORKING"+strings.Repeat(" ", 93))
 		path := filepath.Join(h.home, ".bs", "config.json")
 		for i, tc := range []struct{ config, want string }{
-			{`{"status_line":false,`, "unexpected end"},
-			{`{"status_line":false,"unknown":true}`, `unknown setting "unknown"`},
-			{`{"status_line":"false"}`, "must be a boolean"},
+			{`{"status_line":false,`, "unexpected EOF"},
+			{`{"status_line":false,"unknown":true}`, `unknown field "unknown"`},
+			{`{"status_line":"false"}`, "cannot unmarshal string"},
 			{`{"status_line":false,"status_line_left":"{{"}`, "status_line_left"},
 			{`{"status_line":false,"status_line_center":"{{"}`, "status_line_center"},
 			{`{"status_line":false,"status_line_right":"{{"}`, "status_line_right"},

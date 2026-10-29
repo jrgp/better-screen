@@ -22,14 +22,14 @@ func runConfiguration(t *testing.T, bin string) {
 			{"enabled", `{"status_line":true}`, "No sessions.", false},
 			{"disabled", `{"status_line":false}`, "No sessions.", false},
 			{"malformed", `{"status_line":`, "config.json", true},
-			{"wrong-type", `{"status_line":"false"}`, "must be a boolean", true},
-			{"unknown", `{"color":"blue"}`, "unknown setting", true},
+			{"wrong-type", `{"status_line":"false"}`, "cannot unmarshal string", true},
+			{"unknown", `{"color":"blue"}`, `unknown field "color"`, true},
 			{"left-template-syntax", `{"status_line_left":"{{if}}"}`, "status_line_left", true},
 			{"center-template-syntax", `{"status_line_center":"{{if}}"}`, "status_line_center", true},
 			{"right-template-syntax-disabled", `{"status_line":false,"status_line_right":"{{if}}"}`, "status_line_right", true},
 			{"template-unknown-function", `{"status_line_left":"{{unknown}}"}`, "function", true},
 			{"template-null", `{"status_line_left":null}`, "must be a string", true},
-			{"template-wrong-type", `{"status_line_center":42}`, "must be a string", true},
+			{"template-wrong-type", `{"status_line_center":42}`, "cannot unmarshal number", true},
 			{"oversized", strings.Repeat(" ", 65537), "exceeds 64 KiB", true},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
