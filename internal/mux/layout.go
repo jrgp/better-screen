@@ -66,7 +66,7 @@ func (l *layout) minimum() (int, int) {
 	return max(aw, bw), ah + bh + 1
 }
 
-func (l *layout) place(r rectangle, borders [][]byte) {
+func (l *layout) place(r rectangle, borders [][]byte, equalized bool) {
 	if l.pane != nil {
 		l.pane.bounds = r
 		return
@@ -75,20 +75,29 @@ func (l *layout) place(r rectangle, borders [][]byte) {
 	aw, ah := l.first.minimum()
 	bw, bh := l.second.minimum()
 	if l.vertical {
-		a.cols = min(max((r.cols-1)/2, aw), r.cols-1-bw)
+		cols := (r.cols - 1) / 2
+		if equalized {
+			// Minimum sizes plus a divider are proportional to aligned pane counts.
+			cols = (r.cols+1)*(aw+1)/(aw+bw+2) - 1
+		}
+		a.cols = min(max(cols, aw), r.cols-1-bw)
 		b.x, b.cols = r.x+a.cols+1, r.cols-a.cols-1
 		for y := r.y; y < r.y+r.rows; y++ {
 			borders[y][r.x+a.cols] = 1
 		}
 	} else {
-		a.rows = min(max((r.rows-1)/2, ah), r.rows-1-bh)
+		rows := (r.rows - 1) / 2
+		if equalized {
+			rows = (r.rows+1)*(ah+1)/(ah+bh+2) - 1
+		}
+		a.rows = min(max(rows, ah), r.rows-1-bh)
 		b.y, b.rows = r.y+a.rows+1, r.rows-a.rows-1
 		for x := r.x; x < r.x+r.cols; x++ {
 			borders[r.y+a.rows][x] = 2
 		}
 	}
-	l.first.place(a, borders)
-	l.second.place(b, borders)
+	l.first.place(a, borders, equalized)
+	l.second.place(b, borders, equalized)
 }
 
 func commandLayout(count, rows int) *layout {
@@ -121,7 +130,7 @@ func (w *window) place(cols, rows int) {
 		// focused pane is visible until a larger canonical size is fitted.
 		w.focused.bounds = rectangle{cols: cols, rows: rows}
 	} else {
-		w.root.place(rectangle{cols: cols, rows: rows}, w.borders)
+		w.root.place(rectangle{cols: cols, rows: rows}, w.borders, w.equalized)
 	}
 }
 

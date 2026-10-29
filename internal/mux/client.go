@@ -337,6 +337,8 @@ func (c *client) input(data []byte) (bool, error) {
 				op = "split-v"
 			case 'S':
 				op = "split-h"
+			case '=':
+				op = "equalize"
 			case '\t':
 				op = "pane-next"
 			case 'n', ' ', 0, 14:
@@ -489,7 +491,7 @@ func (c *client) draw() error {
 				lines = append(lines, fmt.Sprintf("%s%d  %s%s", prefix, w.Number, cleanText(w.Title), current))
 			}
 		} else {
-			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "Left/Right  reorder current window", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration   B  broadcast input", "a  literal Ctrl-A    ?  help"}
+			lines = []string{"bs - Help", "Ctrl-A followed by:", "c  create window     n/Space  next   p  previous", "Left/Right  reorder current window", "0-9  select window   \"  window list", "k  kill window       K  kill focused pane", "|  left/right split  S  top/bottom split", "=  equalize pane widths and heights", "Tab / Shift-Tab  next/previous pane", "s  switch session    Esc  scrollback", "F  fit to this client   d  detach", "R  reload configuration   B  broadcast input", "a  literal Ctrl-A    ?  help"}
 		}
 		// Scroll menus within the available rows, keeping the selection visible.
 		start := max(0, c.choice-max(0, c.rows-4))

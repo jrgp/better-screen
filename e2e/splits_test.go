@@ -44,6 +44,77 @@ func (c *terminalClient) border(x, y int, glyph rune) {
 }
 
 func runSplits(t *testing.T, bin string) {
+	t.Run("equalize-pane-widths-and-heights", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(120, 25, "-S", "equal")
+		a.await("bs$ ")
+		create := func(label string) {
+			t.Helper()
+			a.command("TOKEN="+label+"; ORIGINAL_PID=$$; printf '\\033]2;pane-%s\\007\\033[2J\\033[Hpane-%s-ready\\n' \"$TOKEN\" \"$TOKEN\"", "pane-"+label+"-ready")
+		}
+		create("A")
+		for _, step := range []struct{ keys, label string }{
+			{"\x01|", "B"}, {"\x01|", "C"}, {"\x01S", "D"}, {"\x01S", "E"},
+		} {
+			a.write(step.keys)
+			create(step.label)
+		}
+		a.command("printf 'before-%s:' \"$TOKEN\"; stty size", "before-E:6 30")
+		b := h.client(120, 25, "-x", "equal")
+		b.await("before-E:6 30")
+		check := func(phase, label, size string) {
+			t.Helper()
+			marker := phase + "-" + label + ":" + size
+			a.command("test \"$$\" = \"$ORIGINAL_PID\" && printf '"+phase+"-%s:' \"$TOKEN\" && stty size", marker)
+			b.await(marker)
+		}
+		a.write("\x01=")
+		check("equal", "E", "8 40")
+		for _, c := range []*terminalClient{a, b} {
+			c.border(39, 0, '│')
+			c.border(79, 0, '│')
+			c.border(80, 7, '─')
+			c.border(80, 15, '─')
+			require.NotContains(t, c.region(59, 0, 1, 24), "│")
+			require.NotContains(t, c.region(90, 11, 1, 1), "─")
+		}
+		for _, tc := range []struct{ label, size string }{
+			{"A", "24 39"}, {"B", "24 39"}, {"C", "7 40"}, {"D", "7 40"}, {"E", "8 40"},
+		} {
+			a.write("\x01\t")
+			check("equal", tc.label, tc.size)
+		}
+		a.write("\x01=")
+		check("repeat", "E", "8 40")
+		require.NoError(t, pty.Setsize(a.pty, &pty.Winsize{Cols: 90, Rows: 19}))
+		a.mu.Lock()
+		require.NoError(t, a.screen.Resize(90, 19, 0, 0))
+		a.mu.Unlock()
+		a.write("\x01F")
+		check("fitted", "E", "6 30")
+		for _, tc := range []struct{ label, size string }{
+			{"A", "18 29"}, {"B", "18 29"}, {"C", "5 30"}, {"D", "5 30"}, {"E", "6 30"},
+		} {
+			a.write("\x01\t")
+			check("fitted", tc.label, tc.size)
+		}
+		a.write("\x01d")
+		a.exited()
+		a = h.client(90, 19, "-x", "equal")
+		a.await("fitted-E:6 30")
+		check("reattached", "E", "6 30")
+		a.write("\x01c")
+		a.await("bs$ ")
+		a.write("\x01|\x01|")
+		a.command("printf 'other-%s:' window; stty size", "other-window:18 22")
+		a.write("\x010")
+		check("preserved", "E", "6 30")
+		a.write("\x01K")
+		check("removed", "D", "9 30")
+		a.write("\x01K\x01K\x01K\x01=")
+		check("single", "A", "18 90")
+	})
+
 	t.Run("splits-focus-windows-multiattach-and-reattach", func(t *testing.T) {
 		h := newHarness(t, bin)
 		a := h.client(80, 16, "-S", "panes")

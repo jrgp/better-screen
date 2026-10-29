@@ -39,6 +39,7 @@ type window struct {
 	focused   *pane
 	borders   [][]byte
 	broadcast bool
+	equalized bool
 }
 
 type session struct {
@@ -499,6 +500,12 @@ func (s *Server) handle(p *peer, r request) {
 			s.paneEvent(event{pane: focused, exited: true})
 		case "split-v", "split-h":
 			if err := s.split(session, w, r.Op == "split-v"); err != nil {
+				s.fail(p, err)
+			}
+		case "equalize":
+			w.equalized = true
+			s.resetViews(session)
+			if err := s.resizeWindow(session, w); err != nil {
 				s.fail(p, err)
 			}
 		case "pane-next", "pane-prev":

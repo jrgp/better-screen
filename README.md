@@ -108,6 +108,7 @@ to switch windows.
 | `"` | Window list |
 | `s` | Session switcher |
 | `\|` / `S` | Split left/right / top/bottom |
+| `=` | Equalize pane widths and heights |
 | `Tab` / `Shift-Tab` | Next / previous pane |
 | `K` | Kill focused pane |
 | `k` | Kill whole window |
@@ -134,6 +135,9 @@ window switching; disabling it restores focused-pane input.
 The first client sets session dimensions; additional clients do not resize it.
 Use Ctrl-A F to fit explicitly. Very small terminals temporarily show only the
 focused pane; fitting a larger terminal restores the layout.
+Ctrl-A `=` balances both dimensions within the existing split arrangement,
+preserving pane order, focus and processes. Equal proportions are maintained
+when the window is resized.
 
 ### Status line
 
