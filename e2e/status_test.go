@@ -33,22 +33,12 @@ func (c *terminalClient) pickerColors(y, active, count int) {
 	c.t.Helper()
 	tabs := strings.SplitN(c.row(y), "] ", count+1)
 	require.Len(c.t, tabs, count+1, "all windows must appear in the picker")
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	x := 0
 	for number := range count {
 		require.True(c.t, strings.HasPrefix(tabs[number], "["), "window %d must appear in the picker", number)
 		width := ansi.StringWidth(tabs[number]) + 1
 		for i := range width {
-			ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: uint16(x + i), Y: uint32(y)})
-			require.NoError(c.t, err)
-			style, err := ref.Style()
-			require.NoError(c.t, err)
-			if number == active {
-				require.Equal(c.t, ghostty.ColorRGB{R: 135, G: 206, B: 250}, style.FgColor().RGB)
-			} else {
-				require.True(c.t, style.IsDefault(), "inactive window %d must use default attributes", number)
-			}
+			c.statusColor(x+i, y, number == active)
 		}
 		x += width + 1
 	}
