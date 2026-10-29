@@ -1,5 +1,7 @@
 # bs - Better Screen
 
+[![Release](https://github.com/jrgp/better-screen/actions/workflows/release.yml/badge.svg)](https://github.com/jrgp/better-screen/actions/workflows/release.yml)
+
 > "What terminal multiplexer is that?"\
 > "It's B-S"\
 > "It's bullsh-?"\
