@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -32,6 +33,27 @@ func TestStatusCellBounds(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, cols, ansi.StringWidth(line), "columns=%d sections=%q output=%q", cols, sections, line)
 		}
+	}
+}
+
+func TestDefaultStatusBroadcast(t *testing.T) {
+	config, err := loadConfig(t.TempDir())
+	require.NoError(t, err)
+	windows := []windowInfo{
+		{Title: "first", Broadcast: true},
+		{Title: "plain"},
+		{Title: "界😀", Broadcast: true},
+	}
+	labels := []string{"[Broadcast | first]", "[plain]", "[Broadcast | 界😀]"}
+	left := strings.Join(labels, " ") + " "
+	for active := range windows {
+		for i := range windows {
+			windows[i].Active = i == active
+		}
+		line, err := config.statusLine(windows, "work", 80)
+		require.NoError(t, err)
+		require.Equal(t, left+strings.Repeat(" ", 80-ansi.StringWidth(left)-4)+"work", ansi.Strip(line))
+		require.Contains(t, line, config.activeTabStyle+labels[active]+"\x1b[39;49m")
 	}
 }
 
