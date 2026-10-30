@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ghostty "go.mitchellh.com/libghostty"
 )
@@ -70,18 +71,21 @@ func runPaneRendering(t *testing.T, bin string) {
 		c.border(39, 0, '│')
 		c.command("printf '\\033[2;1H\\033[1;38;2;10;20;30;48;2;70;80;90mRGB-%s\\033[0m' explicit", "RGB-explicit")
 		check := func(y int, fg, bg ghostty.ColorRGB) {
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: 40, Y: uint32(y)})
-			require.NoError(t, err)
-			style, err := ref.Style()
-			require.NoError(t, err)
-			actualFG, actualBG := style.FgColor().RGB, style.BgColor().RGB
-			if style.Inverse() {
-				actualFG, actualBG = actualBG, actualFG
-			}
-			require.Equal(t, fg, actualFG)
-			require.Equal(t, bg, actualBG)
+			t.Helper()
+			require.EventuallyWithT(t, func(collect *assert.CollectT) {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				ref, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: 40, Y: uint32(y)})
+				require.NoError(collect, err)
+				style, err := ref.Style()
+				require.NoError(collect, err)
+				actualFG, actualBG := style.FgColor().RGB, style.BgColor().RGB
+				if style.Inverse() {
+					actualFG, actualBG = actualBG, actualFG
+				}
+				require.Equal(collect, fg, actualFG)
+				require.Equal(collect, bg, actualBG)
+			}, 5*time.Second, 15*time.Millisecond, "cell (40,%d) rendered colors", y)
 		}
 		check(1, ghostty.ColorRGB{R: 10, G: 20, B: 30}, ghostty.ColorRGB{R: 70, G: 80, B: 90})
 		c.command("printf '\\033]10;rgb:11/22/33\\007\\033]11;rgb:44/55/66\\007\\033[0m\\033[3;1Hdefault-%s' reversed", "default-reversed")
