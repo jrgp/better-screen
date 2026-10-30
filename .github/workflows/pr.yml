@@ -1,0 +1,71 @@
+name: Pull request tests
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CGO_ENABLED: '1'
+  # Keep test socket paths below macOS's Unix socket path limit.
+  TMPDIR: /tmp
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: PR tests (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-amd64
+          - runner: macos-15
+            platform: darwin-arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.10'
+          cache: false
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: '0.17.0'
+          use-cache: false
+      - name: Keep Zig build caches outside the source checkout
+        run: |
+          echo "ZIG_GLOBAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
+          echo "ZIG_LOCAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
+      - name: Install native test prerequisites
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends build-essential pkg-config vim less htop ncurses-term file binutils
+          else
+            brew install pkgconf htop
+          fi
+          command -v vim less htop pkg-config
+          infocmp xterm-256color >/dev/null
+      - name: Build
+        run: make build
+      - name: Run all tests
+        run: make test
+      - name: Run all tests with the race detector and vet
+        run: |
+          export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
+          go test -race -count=1 ./...
+          go vet ./...
