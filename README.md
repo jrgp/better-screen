@@ -149,7 +149,8 @@ The status line is enabled by default. To disable it, put this in
 {"status_line": false}
 ```
 
-The default shows `[title]` for each window on the left and the session
+The default shows `[title]` for each window on the left, or
+`[Broadcast | title]` when that window has broadcast enabled, and the session
 name on the right. Titles come from applications (OSC 0/2), with the shell name
 as a fallback; a split window shows its focused pane's title.
 
@@ -168,8 +169,8 @@ name while keeping the default left section:
 Use `{{ highlight "text" }}` for active-window styling. Missing keys use defaults;
 empty strings render nothing. Center text clips first on overlap, then left;
 right text has priority. Terminal control sequences are stripped.
-Inside a window loop, `{{ if .Broadcast }}BROADCAST{{ end }}` can display the
-broadcast state; the default status line does not add an indicator.
+Custom templates can use `{{ if .Broadcast }}Broadcast | {{ end }}` inside a
+window loop to display the broadcast state.
 
 Configuration loads when the daemon starts. After editing it, press **Ctrl-A R**
 (uppercase R) to reload it for all sessions without restarting. Invalid
