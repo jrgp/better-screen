@@ -221,6 +221,7 @@ func attach(conn *net.UnixConn, in, out *os.File, r request) (resultErr error) {
 			}
 			if r.Sessions != nil {
 				c.sessions = r.Sessions
+				slices.SortFunc(c.sessions, func(a, b sessionInfo) int { return strings.Compare(a.Name, b.Name) })
 			}
 			if r.Windows != nil {
 				c.current.Windows = r.Windows
