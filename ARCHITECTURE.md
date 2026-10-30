@@ -144,7 +144,7 @@ settings are Go `text/template` strings:
 | `status_line_right` | `{{ .Session.Name }}` |
 
 ```gotemplate
-{{ range .Windows }}{{ if .Active }}{{ highlight (printf "%d:%s" .Number .Title) }}{{ else }}{{ .Number }}:{{ .Title }}{{ end }} {{ end }}
+{{ range .Windows }}{{ $label := printf "[%s]" .Title }}{{ if .Broadcast }}{{ $label = printf "[Broadcast | %s]" .Title }}{{ end }}{{ if .Active }}{{ highlight $label }}{{ else }}{{ $label }}{{ end }} {{ end }}
 ```
 
 Each section receives copied, read-only `.Windows` values (`.Number`, `.Title`,
@@ -153,7 +153,9 @@ attach identifier; `.Name` is the session name, or that identifier for unnamed s
 The `highlight` function applies the existing active-window accent, not a
 template-configurable color. The default keeps identical spacing when switching;
 custom conditionals should likewise avoid adding active-only decorations.
-Templates may use `.Broadcast` to add an indicator; the defaults remain unchanged.
+The default prefixes broadcast-enabled window titles with `Broadcast | `,
+including inactive windows. Custom templates may use `.Broadcast` to choose
+their own indicator without changing the application's title.
 
 Sections use terminal-cell widths and grapheme-aware clipping. Centering is
 relative to the full terminal width, not the space remaining between left and

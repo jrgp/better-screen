@@ -29,7 +29,7 @@ type Config struct {
 
 const defaultAccentColor = "#87cefa"
 
-const defaultStatusLeft = `{{ range .Windows }}{{ if .Active }}{{ highlight (printf "[%s]" .Title) }}{{ else }}[{{ .Title }}]{{ end }} {{ end }}`
+const defaultStatusLeft = `{{ range .Windows }}{{ $label := printf "[%s]" .Title }}{{ if .Broadcast }}{{ $label = printf "[Broadcast | %s]" .Title }}{{ end }}{{ if .Active }}{{ highlight $label }}{{ else }}{{ $label }}{{ end }} {{ end }}`
 
 func loadConfig(home string) (Config, error) {
 	// Omitted fields keep their defaults; explicit null values become nil.
