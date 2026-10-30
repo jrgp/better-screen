@@ -19,6 +19,7 @@ concurrency:
 
 env:
   CGO_ENABLED: '1'
+  ZIG_VERSION: '0.17.0'
   RELEASE_VERSION: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'dev' }}
   # Keep test socket paths below macOS's Unix socket path limit.
   TMPDIR: /tmp
@@ -50,11 +51,22 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.10'
-          cache: false
+          cache: true
+          # CGO does not track changes to the external Ghostty library.
+          cache-dependency-path: |
+            go.sum
+            scripts/ghostty.sh
+            .github/workflows/pr.yml
+            .github/workflows/release.yml
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: '0.17.0'
-          use-cache: false
+          version: ${{ env.ZIG_VERSION }}
+          use-cache: false # Cache the installed library below, not Zig intermediates.
+      - name: Restore compiled Ghostty
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: .deps/ghostty-install
+          key: ghostty-v1-${{ matrix.runner }}-${{ runner.arch }}-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('scripts/ghostty.sh') }}
       - name: Keep Zig build caches outside the source checkout
         run: |
           echo "ZIG_GLOBAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
