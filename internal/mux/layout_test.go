@@ -1,6 +1,8 @@
 package mux
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,6 +16,58 @@ func TestPaneCommands(t *testing.T) {
 		require.ErrorContains(t, validatePaneCommands([]string{command}), "pane command 1")
 	}
 	require.ErrorContains(t, validatePaneCommands(strings.Fields(strings.Repeat("true ", maxPanes+1))), "pane limit")
+}
+
+func TestCommandGridRows(t *testing.T) {
+	for _, tc := range []struct {
+		count, cols, rows, want int
+	}{
+		{1, 120, 29, 1},
+		{2, 120, 29, 1},
+		{2, 20, 79, 2},
+		{3, 120, 29, 2},
+		{4, 80, 23, 2},
+		{4, 120, 29, 2},
+		{4, 200, 23, 2},
+		{4, 20, 79, 2},
+		{5, 120, 29, 2},
+		{6, 120, 29, 2},
+		{9, 120, 29, 3},
+		{16, 160, 39, 4},
+		{32, 160, 39, 6},
+		{4, 2, 20, 4},
+		{4, 80, 1, 1},
+		{4, 4, 2, 0},
+	} {
+		t.Run(fmt.Sprintf("%d-in-%dx%d", tc.count, tc.cols, tc.rows), func(t *testing.T) {
+			require.Equal(t, tc.want, commandGridRows(tc.count, tc.cols, tc.rows))
+		})
+	}
+}
+
+func TestCommandGridBalancedCells(t *testing.T) {
+	for count := 1; count <= maxPanes; count++ {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			rows := commandGridRows(count, 120, 29)
+			root := commandLayout(count, rows)
+			panes := root.panes()
+			w := &window{root: root, focused: panes[0], equalized: true}
+			w.place(120, 29)
+			widths := make(map[int][]int)
+			var heights []int
+			for _, p := range panes {
+				if len(widths[p.bounds.y]) == 0 {
+					heights = append(heights, p.bounds.rows)
+				}
+				widths[p.bounds.y] = append(widths[p.bounds.y], p.bounds.cols)
+			}
+			require.Len(t, widths, rows)
+			require.LessOrEqual(t, slices.Max(heights)-slices.Min(heights), 1)
+			for _, row := range widths {
+				require.LessOrEqual(t, slices.Max(row)-slices.Min(row), 1)
+			}
+		})
+	}
 }
 
 func TestCommandLayout(t *testing.T) {

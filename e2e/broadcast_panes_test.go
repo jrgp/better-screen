@@ -98,6 +98,48 @@ func runBroadcastPanes(t *testing.T, bin string) {
 		}
 	})
 
+	t.Run("command-panes-balanced-grid", func(t *testing.T) {
+		for _, tc := range []struct {
+			count, cols, rows, gridCols, gridRows int
+		}{
+			{4, 80, 24, 2, 2},
+			{4, 120, 30, 2, 2},
+			{4, 200, 24, 2, 2},
+			{6, 120, 30, 3, 2},
+			{9, 120, 30, 3, 3},
+			{16, 160, 40, 4, 4},
+		} {
+			t.Run(fmt.Sprintf("%d-in-%dx%d", tc.count, tc.cols, tc.rows), func(t *testing.T) {
+				h := newHarness(t, bin)
+				args := []string{"--panes"}
+				for i := range tc.count {
+					args = append(args, fmt.Sprintf("stty size > grid-%d; printf '[%02d]\\n'; read action", i, i))
+				}
+				a := h.client(tc.cols, tc.rows, args...)
+				for i := range tc.count {
+					label := fmt.Sprintf("[%02d]", i)
+					a.await(label)
+					col, row := i%tc.gridCols, i/tc.gridCols
+					x, y := (tc.cols+1)*col/tc.gridCols, tc.rows*row/tc.gridRows
+					width := (tc.cols+1)*(col+1)/tc.gridCols - 1 - x
+					height := tc.rows*(row+1)/tc.gridRows - 1 - y
+					require.Contains(t, a.region(x, y, width, height), label)
+					data, err := os.ReadFile(filepath.Join(h.home, fmt.Sprintf("grid-%d", i)))
+					require.NoError(t, err)
+					require.Equal(t, fmt.Sprintf("%d %d", height, width), strings.Join(strings.Fields(string(data)), " "))
+				}
+				for row := 1; row < tc.gridRows; row++ {
+					for col := 1; col < tc.gridCols; col++ {
+						a.border((tc.cols+1)*col/tc.gridCols-1, tc.rows*row/tc.gridRows-1, '┼')
+					}
+				}
+				a.write("\x01Bquit\r")
+				a.exited()
+				h.awaitDaemonExit()
+			})
+		}
+	})
+
 	t.Run("command-panes-shell-quoting-initial-sizes-and-exit-reflow", func(t *testing.T) {
 		h := newHarness(t, bin, "/bin/bash")
 		args := []string{"-S", "commands", "--panes"}
@@ -108,7 +150,7 @@ func runBroadcastPanes(t *testing.T, bin string) {
 		}
 		a := h.client(120, 30, args...)
 		var pids []int
-		for i, size := range []string{"14 59", "14 29", "14 30", "14 59", "14 60"} {
+		for i, size := range []string{"14 39", "14 39", "14 40", "14 59", "14 60"} {
 			a.await(fmt.Sprintf("command-%d-ready", i))
 			pids = append(pids, readPanePID(t, h.home, fmt.Sprintf("pane-%d.pid", i)))
 			data, err := os.ReadFile(filepath.Join(h.home, fmt.Sprintf("value-%d", i)))
@@ -118,8 +160,9 @@ func runBroadcastPanes(t *testing.T, bin string) {
 			require.NoError(t, err)
 			require.Equal(t, size, strings.Join(strings.Fields(string(data)), " "), "initial PTY size for command %d", i)
 		}
-		a.border(59, 14, '┼')
-		a.border(89, 14, '┴')
+		a.border(39, 14, '┴')
+		a.border(59, 14, '┬')
+		a.border(79, 14, '┴')
 		for i := 1; i <= 5; i++ {
 			a.write("\x01\t")
 			a.awaitRow(29, defaultStatusRow(120, "commands", fmt.Sprintf("cmd-%d", i%5)))

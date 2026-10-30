@@ -89,9 +89,10 @@ bs -S production --panes "ssh web-01" "ssh web-02" "ssh web-03"
 
 Each argument after `--panes` runs through `$SHELL -c` in its own PTY, with no
 extra default shell. Put `-S` before `--panes`; attach/list/version options cannot
-be combined with it. Panes are arranged automatically and disappear when their
-commands exit. Up to 32 commands are supported, provided the terminal can fit
-them; impossible layouts are rejected before launching anything.
+be combined with it. Panes form a balanced grid (four commands make a 2x2 grid),
+with horizontal and vertical splits, and disappear when their commands exit.
+Up to 32 commands are supported, provided the terminal can fit them; impossible
+layouts are rejected before launching anything.
 
 ### Keys
 

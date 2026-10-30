@@ -717,24 +717,11 @@ func (s *Server) newWindow(session *session, commands ...string) error {
 		return fmt.Errorf("pane limit reached")
 	}
 	cols, rows := session.cols, s.contentRows(session.rows)
-	bestRows, bestScore := 0, 0
-	for r := 1; r <= len(commands); r++ {
-		c := (len(commands) + r - 1) / r
-		if 3*c-1 > cols || 2*r-1 > rows {
-			continue
-		}
-		score := (cols-c+1)/c - 2*((rows-r+1)/r)
-		if score < 0 {
-			score = -score
-		}
-		if bestRows == 0 || score < bestScore {
-			bestRows, bestScore = r, score
-		}
-	}
+	bestRows := commandGridRows(len(commands), cols, rows)
 	if bestRows == 0 {
 		return fmt.Errorf("terminal too small for %d panes", len(commands))
 	}
-	w := &window{root: commandLayout(len(commands), bestRows)}
+	w := &window{root: commandLayout(len(commands), bestRows), equalized: len(commands) > 1}
 	slots := w.root.panes()
 	w.focused = slots[0]
 	w.place(cols, rows)

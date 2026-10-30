@@ -101,6 +101,26 @@ func (l *layout) place(r rectangle, borders [][]byte, equalized bool) {
 	l.second.place(b, borders, equalized)
 }
 
+func commandGridRows(count, cols, rows int) int {
+	bestRows, bestBalance, bestScore := 0, 0, 0
+	for r := 1; r <= count; r++ {
+		c := (count + r - 1) / r
+		if 3*c-1 > cols || 2*r-1 > rows {
+			continue
+		}
+		// Prefer square grid dimensions; pane proportions only break ties.
+		balance := (c - r) * (c - r)
+		score := (cols-c+1)/c - 2*((rows-r+1)/r)
+		if score < 0 {
+			score = -score
+		}
+		if bestRows == 0 || balance < bestBalance || (balance == bestBalance && score < bestScore) {
+			bestRows, bestBalance, bestScore = r, balance, score
+		}
+	}
+	return bestRows
+}
+
 func commandLayout(count, rows int) *layout {
 	if count == 1 {
 		return &layout{pane: &pane{}}

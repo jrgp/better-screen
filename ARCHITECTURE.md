@@ -87,11 +87,13 @@ at either end.
 
 `--panes` consumes the remaining command arguments and creates one window with
 exactly one pane per command, each using the daemon's configured shell with `-c`.
-It may be combined only with `-S`. A fitting row count is chosen using terminal
-cell proportions, then balanced horizontal/vertical subtrees reuse the existing
-layout placement. Geometry and resource limits are checked before any process
-starts; each PTY receives its final pane size at launch. The first command is
-focused, traversal follows command order, and existing exit/reflow handling
+It may be combined only with `-S`. A fitting row count is chosen to keep grid
+row and column counts close, with terminal cell proportions breaking ties.
+Horizontal/vertical subtrees reuse equalized layout placement, keeping row
+heights and widths within each row balanced. Geometry and resource limits are
+checked before any process starts; each PTY receives its final pane size at
+launch. The first command is focused, traversal follows command order, and
+existing exit/reflow handling
 removes completed commands. Partial process-start failures stop panes already
 started for that window.
 
