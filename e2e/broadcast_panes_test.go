@@ -15,6 +15,43 @@ import (
 )
 
 func runBroadcastPanes(t *testing.T, bin string) {
+	t.Run("broadcast-default-status-labels", func(t *testing.T) {
+		h := newHarness(t, bin)
+		a := h.client(100, 16, "-S", "labels")
+		a.command("printf '\\033]2;first\\007first-%s\\n' ready", "first-ready")
+		b := h.client(100, 16, "-x", "labels")
+		b.awaitRow(15, defaultStatusRow(100, "labels", "first"))
+		a.write("\x01B")
+		for _, c := range []*terminalClient{a, b} {
+			c.awaitRow(15, defaultStatusRow(100, "labels", "Broadcast | first"))
+			c.pickerColors(15, 0, 1)
+		}
+		a.write("\x01c")
+		a.command("printf '\\033]2;second\\007second-%s\\n' ready", "second-ready")
+		for _, c := range []*terminalClient{a, b} {
+			c.awaitRow(15, defaultStatusRow(100, "labels", "Broadcast | first", "second"))
+			c.pickerColors(15, 1, 2)
+		}
+		a.write("\x01B")
+		for _, c := range []*terminalClient{a, b} {
+			c.awaitRow(15, defaultStatusRow(100, "labels", "Broadcast | first", "Broadcast | second"))
+		}
+		b.write("\x010\x01B")
+		for _, c := range []*terminalClient{a, b} {
+			c.awaitRow(15, defaultStatusRow(100, "labels", "first", "Broadcast | second"))
+			c.pickerColors(15, 0, 2)
+		}
+		a.write("\x01d")
+		a.exited()
+		r := h.client(100, 16, "-x", "labels")
+		r.awaitRow(15, defaultStatusRow(100, "labels", "first", "Broadcast | second"))
+		r.write("\x011\x01B")
+		for _, c := range []*terminalClient{b, r} {
+			c.awaitRow(15, defaultStatusRow(100, "labels", "first", "second"))
+			c.pickerColors(15, 1, 2)
+		}
+	})
+
 	t.Run("broadcast-window-state-focus-new-panes-and-multiattach", func(t *testing.T) {
 		h := newConfiguredHarness(t, bin, `{"status_line_left":"{{range .Windows}}{{.Number}}={{.Broadcast}} {{end}}","status_line_right":""}`, "/bin/bash")
 		a := h.client(100, 24, "-S", "broadcast")
@@ -211,7 +248,7 @@ func runBroadcastPanes(t *testing.T, bin string) {
 		for i := range 32 {
 			a.await(fmt.Sprintf("ack-%d:ping", i))
 		}
-		a.awaitRow(39, defaultStatusRow(160, "1", "sh"))
+		a.awaitRow(39, defaultStatusRow(160, "1", "Broadcast | sh"))
 		a.write("quit\r")
 		a.exited()
 		h.awaitDaemonExit()
