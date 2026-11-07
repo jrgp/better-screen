@@ -25,7 +25,8 @@ Code is kept in a few packages:
 
 Build prerequisites:
 
-* Go 1.26 or newer, Git, make, a C compiler and pkg-config.
+* Go 1.26 or newer, Git, make, a C compiler, pkg-config, curl and tar.
+* SHA-256 verification: `sha256sum` (Linux) or `shasum` (macOS).
 * **Zig 0.17.0**, on PATH or supplied as an absolute `ZIG` path.
 * On macOS, Apple's Command Line Tools (`xcode-select --install`).
 * Tests additionally require `sh`, `bash`, `vim`, `less`, `htop`, and installed
@@ -34,7 +35,7 @@ Build prerequisites:
 For example, on Fedora:
 
 ```sh
-sudo dnf install golang gcc make pkgconf-pkg-config git vim less htop ncurses-term
+sudo dnf install golang gcc make pkgconf-pkg-config git curl tar vim less htop ncurses-term
 # Install Zig 0.17.0 from https://ziglang.org/download/ and put it on PATH.
 make build
 ./bs -S work
@@ -44,10 +45,13 @@ On macOS, install the Command Line Tools and the same prerequisites through
 your preferred package manager. Use Zig **0.17.0**, not a newer development
 release.
 
-`make build` fetches and builds the pinned native library into `.deps/`.
-Go dependencies are pinned in `go.mod`/`go.sum`; the matching native revision
-is pinned in `scripts/ghostty.sh`. Ghostty uses baseline CPU settings rather
-than the build host's optional instructions. Initial builds need Internet access.
+`make build` downloads, verifies and builds the official source tarball into `.deps/`.
+Go dependencies are pinned in `go.mod`/`go.sum`; libghostty-vt **1.0.0** is
+pinned by version and SHA-256 in `scripts/ghostty.sh`. The Go bindings temporarily
+use a pinned compatibility fork while the
+[stable-ABI update](https://github.com/mitchellh/go-libghostty/pull/21) is pending
+upstream. Ghostty uses baseline CPU settings rather than the build host's
+optional instructions. Initial builds need Internet access.
 The executable embeds Ghostty statically: copying `bs` to another compatible
 machine requires **neither Ghostty nor Zig at runtime**. System libc is
 dynamically linked; this is not a fully static libc binary.
@@ -251,7 +255,7 @@ make test
 make test-e2e
 
 # For direct Go commands:
-export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
+export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/lib/pkgconfig"
 go test -count=1 ./...
 go test -race -count=1 ./...
 go vet ./...

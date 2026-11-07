@@ -9,6 +9,31 @@ import (
 	ghostty "go.mitchellh.com/libghostty"
 )
 
+func TestLibraryVersion(t *testing.T) {
+	require.Equal(t, "1.0.0", ghostty.HeaderVersion)
+	require.Equal(t, ghostty.HeaderVersion, ghostty.Version())
+	info, err := ghostty.GetBuildInfo()
+	require.NoError(t, err)
+	require.Equal(t, ghostty.HeaderVersion, info.VersionString)
+	require.True(t, info.FeatureFormatter)
+	require.True(t, info.FeatureRenderState)
+	require.True(t, info.FeatureGridIntrospection)
+}
+
+func TestCaptureDoesNotRestoreGlobalState(t *testing.T) {
+	source, err := New(20, 4)
+	require.NoError(t, err)
+	defer source.Close()
+	source.VTWrite([]byte("\x1b]4;1;rgb:11/22/33\x1b\\\x1b]7;file:///tmp/bs\x1b\\\x1b[?1004h\x1b[>3u\x1b]8;;https://example.test/cursor\x1b\\"))
+	frame, err := Capture(source, 20, 4, 0)
+	require.NoError(t, err)
+	output := Draw(nil, frame)
+	for _, sequence := range []string{"\x1b]4;", "\x1b]7;", "\x1b[>3u", "\x1b]8;"} {
+		require.NotContains(t, output, sequence)
+	}
+	require.Contains(t, frame.Modes, 1004)
+}
+
 func TestRoundTrip(t *testing.T) {
 	source, err := New(40, 8)
 	require.NoError(t, err)

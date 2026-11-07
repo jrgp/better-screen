@@ -2,8 +2,14 @@
 
 Validated on Linux amd64 with Go 1.26.10, GCC 16, Zig 0.17.0:
 
-* Ghostty: `f54340ad77814fe319d136e5e915d6a48de8dd23` (the Go bindings' own pin).
-* Go bindings: `df1957cbff56486c4e1ff89711b4dd043e8e38ff`.
+* libghostty-vt **1.0.0**:
+  [official source tarball](https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0.tar.gz),
+  verified against the SHA-256 pinned in `scripts/ghostty.sh`.
+* Go bindings: `e247028bdf51b04e9a0fe89459d2abb6e72993a5`.
+  Stable-ABI fixes are temporarily pinned to fork commit
+  `a418e0549948`; [upstream PR #21](https://github.com/mitchellh/go-libghostty/pull/21)
+  updates renamed C constants, a grid-reference pointer argument and
+  absent-color result handling without changing the Go API.
 * Sources investigated: [Ghostty](https://github.com/ghostty-org/ghostty),
   [Go bindings](https://github.com/mitchellh/go-libghostty),
   [package documentation](https://pkg.go.dev/go.mitchellh.com/libghostty).
@@ -27,7 +33,7 @@ these tests.
 | VT reconstruction | Native `FormatterFormatVT`, rectangular selections, explicit screen positioning |
 | UTF-8, wide and combining characters | Native grapheme handling; wide Chinese and combining accent input |
 | Multiple concurrent instances | Independent goroutines, one owner per instance |
-| Static native linking | Default bindings use `pkg-config --static`; `ldd ./bs` shows libc only, no Ghostty/Zig runtime |
+| Static native linking | Default bindings use `pkg-config --static libghostty-vt-static`; `ldd ./bs` shows libc only, no Ghostty/Zig runtime |
 
 ## A parser is not a renderer
 
@@ -50,7 +56,8 @@ Raw PTY escapes are never forwarded to the physical terminal. Only the
 formatter's screen representation and explicitly allowed modes are rendered.
 Clipboard, file, window-management and query side effects are not replayed.
 
-No binding extensions or local modifications to either upstream are needed.
+No additional CGO wrapper or modifications to Ghostty are needed. The temporary
+binding compatibility fork is documented above; its full tests pass against 1.0.
 Native state is not thread-safe: callers must serialize all operations for a
 given instance, including formatting and destruction. Independent instances can
 operate concurrently. Go's race detector does not instrument native code.
@@ -61,12 +68,14 @@ Install Go >=1.26, a C compiler, pkg-config, make and Zig 0.17.0. Then:
 
 ```sh
 make build
-export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
+export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/lib/pkgconfig"
 go test -count=1 -v ./internal/vt
 ./bs -v
 ldd ./bs # Linux; use otool -L on macOS
 ```
 
 The gate passed **before** implementing daemon/session/client functionality.
-Ghostty's public API is still unstable, so both native and Go revisions are
-pinned together. Static Ghostty linking is not fully static libc linking.
+The native C ABI is stable from libghostty-vt 1.0. Both native and Go revisions
+remain pinned for reproducible builds. The official tarball supplies its release
+version metadata; tests check the compiled headers and linked library version.
+Static Ghostty linking is not fully static libc linking.

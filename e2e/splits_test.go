@@ -18,7 +18,10 @@ func (c *terminalClient) region(x, y, cols, rows int) string {
 	require.NoError(c.t, err)
 	b, err := c.screen.GridRef(ghostty.Point{Tag: ghostty.PointTagActive, X: uint16(x + cols - 1), Y: uint32(y + rows - 1)})
 	require.NoError(c.t, err)
-	f, err := ghostty.NewFormatter(c.screen, ghostty.WithFormatterSelection(&ghostty.Selection{Start: *a, End: *b, Rectangle: true}))
+	f, err := ghostty.NewFormatter(c.screen,
+		ghostty.WithFormatterSelection(&ghostty.Selection{Start: *a, End: *b, Rectangle: true}),
+		ghostty.WithFormatterTrim(false),
+	)
 	require.NoError(c.t, err)
 	defer f.Close()
 	text, err := f.FormatString()

@@ -33,5 +33,5 @@ mkdir -p dist
 compiler="$zig cc -target $target"
 if [ "$os" = darwin ]; then compiler="$compiler -isysroot $sdk"; fi
 CGO_ENABLED=1 GOOS="$os" GOARCH="$arch" CC="$compiler" \
-    PKG_CONFIG_PATH="$prefix/share/pkgconfig" \
+    PKG_CONFIG_PATH="$prefix/lib/pkgconfig" \
     go build -tags netgo,osusergo -trimpath -ldflags "${VERSION:+-X main.version=$VERSION}" -o "dist/bs-$os-$arch" ./cmd/bs

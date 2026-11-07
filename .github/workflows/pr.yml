@@ -81,6 +81,6 @@ jobs:
         run: make test
       - name: Run all tests with the race detector and vet
         run: |
-          export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
+          export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/lib/pkgconfig"
           go test -race -count=1 ./...
           go vet ./...
