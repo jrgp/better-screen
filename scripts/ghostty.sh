@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-revision=f54340ad77814fe319d136e5e915d6a48de8dd23
+revision=0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec # vt-1.0.0
 target="${1:-native}"
 prefix="${2:-$PWD/.deps/ghostty-install}"
 if [ -f "$prefix/lib/libghostty-vt.a" ] && [ -f "$prefix/bs-revision" ] &&
@@ -30,7 +30,8 @@ if [ "$("$zig" version)" != 0.17.0 ]; then
     echo "This Ghostty revision requires pinned Zig 0.17.0." >&2
     exit 1
 fi
-set -- build -j2 -Demit-lib-vt -Doptimize=ReleaseFast -Demit-xcframework=false -Dcpu=baseline --prefix "$prefix"
+# The shallow commit checkout has no release tags for version detection.
+set -- build -j2 -Demit-lib-vt -Dlib-version-string=1.0.0 -Doptimize=ReleaseFast -Demit-xcframework=false -Dcpu=baseline --prefix "$prefix"
 if [ "$target" != native ]; then set -- "$@" "-Dtarget=$target"; fi
 "$zig" "$@"
 printf '%s %s baseline\n' "$revision" "$target" > "$prefix/bs-revision"

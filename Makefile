@@ -1,4 +1,4 @@
-export PKG_CONFIG_PATH := $(CURDIR)/.deps/ghostty-install/share/pkgconfig:$(PKG_CONFIG_PATH)
+export PKG_CONFIG_PATH := $(CURDIR)/.deps/ghostty-install/lib/pkgconfig:$(PKG_CONFIG_PATH)
 export VERSION
 
 .PHONY: build deps test test-e2e release clean

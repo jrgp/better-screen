@@ -45,9 +45,12 @@ your preferred package manager. Use Zig **0.17.0**, not a newer development
 release.
 
 `make build` fetches and builds the pinned native library into `.deps/`.
-Go dependencies are pinned in `go.mod`/`go.sum`; the matching native revision
-is pinned in `scripts/ghostty.sh`. Ghostty uses baseline CPU settings rather
-than the build host's optional instructions. Initial builds need Internet access.
+Go dependencies are pinned in `go.mod`/`go.sum`; libghostty-vt **1.0.0** is
+pinned to its release commit in `scripts/ghostty.sh`. The Go bindings temporarily
+use a pinned compatibility fork while the
+[stable-ABI update](https://github.com/mitchellh/go-libghostty/pull/21) is pending
+upstream. Ghostty uses baseline CPU settings rather than the build host's
+optional instructions. Initial builds need Internet access.
 The executable embeds Ghostty statically: copying `bs` to another compatible
 machine requires **neither Ghostty nor Zig at runtime**. System libc is
 dynamically linked; this is not a fully static libc binary.
@@ -251,7 +254,7 @@ make test
 make test-e2e
 
 # For direct Go commands:
-export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/share/pkgconfig"
+export PKG_CONFIG_PATH="$PWD/.deps/ghostty-install/lib/pkgconfig"
 go test -count=1 ./...
 go test -race -count=1 ./...
 go vet ./...

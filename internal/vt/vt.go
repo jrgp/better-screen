@@ -143,6 +143,7 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 			ghostty.WithFormatterFormat(ghostty.FormatterFormatVT),
 			ghostty.WithFormatterSelection(selection),
 			ghostty.WithFormatterTrim(false),
+			ghostty.WithFormatterExtras(ghostty.FormatterExtrasNone),
 		)
 		if err != nil {
 			return Frame{}, err
@@ -182,9 +183,9 @@ func Capture(t *ghostty.Terminal, cols, rows, offset int) (Frame, error) {
 		return Frame{}, err
 	}
 	switch cursor.VisualStyle {
-	case ghostty.CursorVisualStyleBar:
+	case ghostty.CursorStyleBar:
 		f.CursorStyle = 6
-	case ghostty.CursorVisualStyleUnderline:
+	case ghostty.CursorStyleUnderline:
 		f.CursorStyle = 4
 	default:
 		f.CursorStyle = 2
