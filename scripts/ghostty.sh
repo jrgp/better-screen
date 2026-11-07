@@ -1,19 +1,28 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-revision=0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec # vt-1.0.0
+version=1.0.0
+checksum=4a6ef758be721923e1969e7b81b443dcc92d8dd3fb5a39600c03a8817a753676
 target="${1:-native}"
 prefix="${2:-$PWD/.deps/ghostty-install}"
+identity="$version $checksum $target baseline"
 if [ -f "$prefix/lib/libghostty-vt.a" ] && [ -f "$prefix/bs-revision" ] &&
-    [ "$(cat "$prefix/bs-revision")" = "$revision $target baseline" ]; then exit 0; fi
+    [ "$(cat "$prefix/bs-revision")" = "$identity" ]; then exit 0; fi
 mkdir -p .deps
-if [ ! -d .deps/ghostty/.git ]; then
-    git init -q .deps/ghostty
-    git -C .deps/ghostty remote add origin https://github.com/ghostty-org/ghostty.git
-fi
-if [ "$(git -C .deps/ghostty rev-parse HEAD 2>/dev/null || true)" != "$revision" ]; then
-    git -C .deps/ghostty fetch -q --depth 1 origin "$revision"
-    git -C .deps/ghostty checkout -q --detach "$revision"
+source="$PWD/.deps/libghostty-vt-$version"
+if [ ! -f "$source/bs-source-sha256" ] ||
+    [ "$(cat "$source/bs-source-sha256")" != "$checksum" ]; then
+    archive="$PWD/.deps/libghostty-vt-$version.tar.gz"
+    curl -fLsS --retry 3 -o "$archive" \
+        "https://release.files.ghostty.org/libghostty-vt/$version/libghostty-vt-$version.tar.gz"
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c -
+    else
+        printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+    fi
+    tar -xzf "$archive" -C .deps
+    printf '%s\n' "$checksum" > "$source/bs-source-sha256"
+    rm -f "$archive"
 fi
 if [ -n "${ZIG:-}" ]; then
     zig="$ZIG"
@@ -25,13 +34,12 @@ else
     echo "Install Zig 0.17.0 and put it on PATH (or set ZIG)." >&2
     exit 1
 fi
-cd .deps/ghostty
+cd "$source"
 if [ "$("$zig" version)" != 0.17.0 ]; then
     echo "This Ghostty revision requires pinned Zig 0.17.0." >&2
     exit 1
 fi
-# The shallow commit checkout has no release tags for version detection.
-set -- build -j2 -Demit-lib-vt -Dlib-version-string=1.0.0 -Doptimize=ReleaseFast -Demit-xcframework=false -Dcpu=baseline --prefix "$prefix"
+set -- build -j2 -Demit-lib-vt -Doptimize=ReleaseFast -Demit-xcframework=false -Dcpu=baseline --prefix "$prefix"
 if [ "$target" != native ]; then set -- "$@" "-Dtarget=$target"; fi
 "$zig" "$@"
-printf '%s %s baseline\n' "$revision" "$target" > "$prefix/bs-revision"
+printf '%s\n' "$identity" > "$prefix/bs-revision"

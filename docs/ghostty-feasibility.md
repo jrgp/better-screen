@@ -2,8 +2,9 @@
 
 Validated on Linux amd64 with Go 1.26.10, GCC 16, Zig 0.17.0:
 
-* libghostty-vt **1.0.0** (`vt-1.0.0`):
-  `0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec`.
+* libghostty-vt **1.0.0**:
+  [official source tarball](https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0.tar.gz),
+  verified against the SHA-256 pinned in `scripts/ghostty.sh`.
 * Go bindings: `e247028bdf51b04e9a0fe89459d2abb6e72993a5`.
   Stable-ABI fixes are temporarily pinned to fork commit
   `a418e0549948`; [upstream PR #21](https://github.com/mitchellh/go-libghostty/pull/21)
@@ -75,7 +76,6 @@ ldd ./bs # Linux; use otool -L on macOS
 
 The gate passed **before** implementing daemon/session/client functionality.
 The native C ABI is stable from libghostty-vt 1.0. Both native and Go revisions
-remain pinned for reproducible builds. The build explicitly stamps version
-1.0.0 because its shallow commit checkout has no release tags; tests check the
-compiled headers and linked library version. Static Ghostty linking is not
-fully static libc linking.
+remain pinned for reproducible builds. The official tarball supplies its release
+version metadata; tests check the compiled headers and linked library version.
+Static Ghostty linking is not fully static libc linking.
