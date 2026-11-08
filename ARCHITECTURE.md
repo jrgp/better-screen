@@ -47,10 +47,9 @@ release.
 
 `make build` downloads, verifies and builds the official source tarball into `.deps/`.
 Go dependencies are pinned in `go.mod`/`go.sum`; libghostty-vt **1.0.0** is
-pinned by version and SHA-256 in `scripts/ghostty.sh`. The Go bindings temporarily
-use a pinned compatibility fork while the
-[stable-ABI update](https://github.com/mitchellh/go-libghostty/pull/21) is pending
-upstream. Ghostty uses baseline CPU settings rather than the build host's
+pinned by version and SHA-256 in `scripts/ghostty.sh`. The official Go bindings
+are maintained at [Tangled](https://tangled.org/mitchellh.com/go-libghostty).
+Ghostty uses baseline CPU settings rather than the build host's
 optional instructions. Initial builds need Internet access.
 The executable embeds Ghostty statically: copying `bs` to another compatible
 machine requires **neither Ghostty nor Zig at runtime**. System libc is

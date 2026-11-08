@@ -9,7 +9,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/stretchr/testify v1.12.1
-	go.mitchellh.com/libghostty v0.0.0-20261106041537-e247028bdf51
+	go.mitchellh.com/libghostty v0.0.0-20261107144202-b13f277ddcb2
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.37.0
 )
@@ -28,6 +28,3 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 )
-
-// Temporary stable-ABI fixes: https://github.com/mitchellh/go-libghostty/pull/21
-replace go.mitchellh.com/libghostty => github.com/jrgp/go-libghostty v0.0.0-20261107062850-a418e0549948

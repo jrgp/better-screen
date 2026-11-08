@@ -5,13 +5,10 @@ Validated on Linux amd64 with Go 1.26.10, GCC 16, Zig 0.17.0:
 * libghostty-vt **1.0.0**:
   [official source tarball](https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0.tar.gz),
   verified against the SHA-256 pinned in `scripts/ghostty.sh`.
-* Go bindings: `e247028bdf51b04e9a0fe89459d2abb6e72993a5`.
-  Stable-ABI fixes are temporarily pinned to fork commit
-  `a418e0549948`; [upstream PR #21](https://github.com/mitchellh/go-libghostty/pull/21)
-  updates renamed C constants, a grid-reference pointer argument and
-  absent-color result handling without changing the Go API.
+* Official Go bindings: `b13f277ddcb208deea304745dd5240024a0e8be4`,
+  with upstream 1.0 compatibility.
 * Sources investigated: [Ghostty](https://github.com/ghostty-org/ghostty),
-  [Go bindings](https://github.com/mitchellh/go-libghostty),
+  [Go bindings](https://tangled.org/mitchellh.com/go-libghostty),
   [package documentation](https://pkg.go.dev/go.mitchellh.com/libghostty).
 
 ## Evidence
@@ -56,8 +53,7 @@ Raw PTY escapes are never forwarded to the physical terminal. Only the
 formatter's screen representation and explicitly allowed modes are rendered.
 Clipboard, file, window-management and query side effects are not replayed.
 
-No additional CGO wrapper or modifications to Ghostty are needed. The temporary
-binding compatibility fork is documented above; its full tests pass against 1.0.
+No additional CGO wrapper, dependency fork or modifications to Ghostty are needed.
 Native state is not thread-safe: callers must serialize all operations for a
 given instance, including formatting and destruction. Independent instances can
 operate concurrently. Go's race detector does not instrument native code.
